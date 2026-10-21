@@ -317,6 +317,7 @@ Delegue para agentes/skills quando a tarefa envolver múltiplos arquivos, decis�
 - Scaffolding (apps/libs): invoque a skill `nx-generate` **antes** de explorar ou gerar.
 - Navegação do workspace: skill `nx-workspace`.
 - Commits: skill `nx-commit` (scopes por projeto Nx).
+- Implementação de código Go: use sempre o agente `golang-pro` (`.claude/agents/golang-pro.md`).
 
 ### Melhoria contínua (opcional)
 
