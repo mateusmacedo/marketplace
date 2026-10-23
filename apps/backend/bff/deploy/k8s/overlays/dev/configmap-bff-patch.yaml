@@ -5,8 +5,11 @@ metadata:
 data:
   # Os `api` dos contextos rodam sem TLS em dev.
   GRPC_INSECURE: 'true'
-  # Sem servidor de autorização em dev: a identidade vem do próprio Bearer, sem
-  # verificação nem consulta à deny-list. Um ambiente com OIDC declara
-  # OIDC_ISSUER, OIDC_AUDIENCE e OIDC_TENANT_CLAIM no próprio overlay.
-  AUTH_DEV_MOCK: 'true'
+  # O AUTH_DEV_MOCK fica só nas suítes de teste: a API e o session-events, que
+  # leem este ConfigMap, verificam pelo Keycloak do Component infra/keycloak/dev,
+  # no hostname que ele publica (KC_HOSTNAME). O operador e o client
+  # marketplace-dev vêm do Job bff-keycloak-seed (deploy/keycloak).
+  OIDC_ISSUER: http://keycloak:8080/realms/dmpf
+  OIDC_AUDIENCE: dmpf-bff
+  OIDC_TENANT_CLAIM: organization.*.tenant_id
   OTEL_RESOURCE_ATTRIBUTES: service.version=dev,deployment.environment.name=dev

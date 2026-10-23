@@ -69,7 +69,7 @@ administração, e o `/readyz` só cai para `503` no `SIGTERM`.
 | `OIDC_ISSUER` | api, session-events | issuer do Keycloak |
 | `OIDC_AUDIENCE` | api | audiência exigida no token |
 | `OIDC_TENANT_CLAIM` | api | claim do tenant (`organization.*.tenant_id`) |
-| `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, só em desenvolvimento; exclusivo com `OIDC_ISSUER` |
+| `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, nas suítes de teste e no `serve` no host; exclusivo com `OIDC_ISSUER` |
 | `REDIS_URL` | api, session-events | deny-list de revogação (usuário ACL restrito a `~dmpf:revocation:*`) |
 | `OIDC_REVOCATION_TIMEOUT_MS` | api | prazo da consulta à deny-list; estouro recusa o token |
 | `OIDC_REVOCATION_TTL_SECONDS` | session-events | validade de cada entrada da deny-list |
@@ -82,6 +82,10 @@ Configuração inválida faz a partida sair com código 2; descoberta OIDC sem
 resposta, com código 1. Os valores de desenvolvimento estão em
 `deploy/.env.example` (API com `AUTH_DEV_MOCK`) e
 `deploy/.env.session-events.example`; os `.env` copiados deles ficam fora do git.
+O `deploy/.env.example` é também o manifesto que as suítes de `app/` leem
+(`telemetry_manifest_test.go`, `degradation_test.go`), por isso segue com o mock;
+para o `serve` em OIDC, troque no `deploy/.env` o `AUTH_DEV_MOCK` por
+`OIDC_ISSUER`, `OIDC_AUDIENCE` e `OIDC_TENANT_CLAIM` com os valores do compose.
 
 ## Rodar localmente
 
@@ -90,17 +94,64 @@ pnpm nx run bff:deploy-env         # copia deploy/.env.example para deploy/.env
 pnpm nx run bff:redis-up           # Redis do compose local
 pnpm nx run bff:serve              # API em 127.0.0.1:8080, admin em 127.0.0.1:8090
 
-pnpm nx run bff:keycloak-up        # Keycloak do compose local (profile keycloak)
+pnpm nx run bff:keycloak-up        # Keycloak do compose e o seed do operador
 pnpm nx run bff:serve-session-events
 ```
 
-No compose, o `deploy/compose.yml` entra pela semente `infra/local/docker-compose.yml`:
-`dmpf-bff` sobe nos profiles do DMPF e `dmpf-bff-session-events` só no profile
-`keycloak`, porque depende dele. Só a porta pública da API é publicada, em
+No compose, o `deploy/compose.yml` entra pela semente `infra/local/docker-compose.yml`
+e o ambiente sobe com os dois profiles:
+
+```bash
+docker compose -f infra/local/docker-compose.yml --profile dmpf --profile keycloak up -d
+```
+
+`dmpf-bff` está no profile `dmpf`, mas verifica o token pelo Keycloak e espera o
+seed `bff-keycloak-seed` terminar; sem o profile `keycloak`, ele não passa da
+descoberta OIDC e reinicia. `dmpf-bff-session-events` e `bff-keycloak-seed` sobem
+só no profile `keycloak`. Só a porta pública da API é publicada, em
 `127.0.0.1:${HTTP_PORT:-8080}`; as portas de administração e o
 `/backchannel-logout` ficam na rede interna do compose. No compose e no overlay
-`dev`, a API roda com `AUTH_DEV_MOCK`; a revogação só vale com OIDC, como no
-`serve` com o `OIDC_ISSUER` configurado e no `test-keycloak`.
+`dev`, a API roda em OIDC e a revogação vale; o `AUTH_DEV_MOCK` fica nas suítes de
+teste e no `serve` no host com o `deploy/.env.example`.
+
+## Operador e token de desenvolvimento
+
+O seed complementar `deploy/keycloak/seed.sh` roda depois do seed gerado
+(`infra/keycloak/dev/seed.sh`, saída do dmpf-plugin, que não muda à mão) e
+converge o realm `dmpf` para:
+
+- a Organization `marketplace`, com o atributo `tenant_id=["marketplace"]`, o
+  tenant do operador (`TENANCY_OPERATOR_TENANT` do `tenancy`);
+- as realm roles `tenancy:read` e `tenancy:write`;
+- o usuário `operator`, senha `${KEYCLOAK_SEED_PASSWORD:-dmpf-dev-password}`,
+  membro só da `marketplace` e com as duas roles;
+- o client público `marketplace-dev`, só com password grant, os scopes `profile`
+  e `organization` por padrão e a audiência `dmpf-bff`.
+
+Ele mora no `bff` porque é a borda que verifica o token: o client, a audiência e
+a claim de tenant são configuração dela. No compose roda como serviço
+`bff-keycloak-seed`; no overlay `dev`, como Job `bff-keycloak-seed` do Component
+`deploy/keycloak/`, contra o Keycloak do Component `infra/keycloak/dev`. O Job é
+imutável: um seed novo exige apagar o Job antes de aplicar.
+
+O password grant dispensa navegador, mas entrega a senha ao client; por isso o
+`marketplace-dev` existe só nesse seed, que nunca roda no `hmg`. Quem usa
+navegador segue com o `dmpf-portal` (PKCE).
+
+```bash
+bash apps/backend/bff/scripts/operator-token.sh   # imprime só o access token
+```
+
+O script usa `curl` e `jq` e lê `KEYCLOAK_URL` (padrão
+`http://keycloak.localhost:${KEYCLOAK_PORT:-8180}`), `KEYCLOAK_USERNAME` e
+`KEYCLOAK_SEED_PASSWORD`. O token vale 300 s (`accessTokenLifespan` do realm). No
+Swagger UI (`http://127.0.0.1:8082`), cole-o em **Authorize** → `bearerAuth`, sem
+o prefixo `Bearer`. Na linha de comando:
+
+```bash
+TOKEN="$(bash apps/backend/bff/scripts/operator-token.sh)"
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/me
+```
 
 ## Targets Nx
 

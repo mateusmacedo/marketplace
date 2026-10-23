@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Seed complementar do realm dmpf, só do overlay dev: o mesmo seed.sh do compose,
+# contra o Keycloak do Component infra/keycloak/dev (Service keycloak e Secret
+# keycloak-admin no namespace). WHY: o Job é imutável e o ConfigMap não leva
+# hash, como no seed gerado; um seed novo exige apagar o Job bff-keycloak-seed.
+
+resources:
+  - seed-job.yaml
+
+configMapGenerator:
+  - name: bff-keycloak-seed
+    files:
+      - seed.sh
+    options:
+      disableNameSuffixHash: true
