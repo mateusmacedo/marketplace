@@ -215,8 +215,8 @@ pela mudança (`nx affected`), na ordem:
 
 Os projetos Go (`tag:stack:go`) ficam fora desse pipeline e passam pelo
 `.github/workflows/dmpf-ci.yml`, que chama o workflow reutilizável do platform fixado por
-SHA. Sem bounded context, o `gate-check` desse workflow falha por falta de provider de contexto
-(ADR-012): ele não é check obrigatório e passa a valer a partir do primeiro contexto.
+SHA. O `gate-check` desse workflow só roda no job `self-tests`, desligado por padrão, então não
+reprova os PRs; rode-o localmente com o script do plugin (ADR-012). O workflow não é check obrigatório.
 
 ## Testes
 

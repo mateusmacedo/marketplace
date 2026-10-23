@@ -31,7 +31,7 @@ Um arquivo por decisão, numeração sequencial e slug em kebab-case:
 ```
 
 O número é o próximo livre na sequência (o último registrado abaixo é o
-`011`). O título dentro do arquivo repete o número: `# ADR-00N: <título>`.
+`013`). O título dentro do arquivo repete o número: `# ADR-00N: <título>`.
 
 ## Template
 
@@ -103,4 +103,5 @@ ADR-001.
 | ADR-009 | O template não carrega libs nem generator de exemplo | Remove `shared-types`, `shared-utils` e o generator `shared-lib` obsoleto, deixando `libs/shared/` e `tools/generators/` como destinos vazios; a infraestrutura de release fica armada com um guard para conjunto vazio. |
 | ADR-010 | Migrar a manutenção para o GitHub e o Linear | Muda a plataforma para o GitHub (`gh`, runner `ubuntu-26.04`, reutilizáveis locais), publica as libs no GitHub Packages com escopo `@mateusmacedo` num job encadeado ao release e adota o Linear como tracker; supersede a ADR-005 e partes das ADRs 004 e 008. |
 | ADR-011 | O template consome o DMPF por versão | Versiona a saída do `init` do `@mateusmacedo/dmpf-plugin` fixado no `catalog:`, autentica o GitHub Packages por npmrc de usuário, prova o template com o `template-smoke`, deixa o release sem grupos até o primeiro membro e mantém o `dmpf-ci.yml` fora dos checks obrigatórios. |
-| ADR-012 | Borda e infraestrutura alinhadas ao DMPF | Adota o Keycloak de referência, a verificação do token no `bff` pelo `authn` com revogação de falha fechada, Redpanda e borda REST sem GraphQL nem Traefik no MVP; aceita o `gate-check` vermelho até o primeiro bounded context. |
+| ADR-012 | Borda e infraestrutura alinhadas ao DMPF | Adota o Keycloak de referência, a verificação do token no `bff` pelo `authn` com revogação de falha fechada, Redpanda e borda REST sem GraphQL nem Traefik no MVP; aceita o `gate-check` vermelho até o primeiro bounded context; o addendum de 2026-10-23 registra que ele só roda no job `self-tests`, desligado, e é rodado localmente. |
+| ADR-013 | O tenant é a loja do seller, e o operador guarda o que é de todos | Define o tenant como a loja do seller e um tenant reservado do operador para comprador, carrinho, pedido e o registro de lojas; o que cruza da operação para a loja chega por projeção declarada (ADR-068 do platform). |
