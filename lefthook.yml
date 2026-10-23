@@ -8,10 +8,10 @@ pre-commit:
 pre-push:
   commands:
     lint:
-      run: pnpm nx affected -t lint --parallel=3 --exclude=@nx-base-template/source
+      run: pnpm nx affected -t lint --parallel=3 --exclude=@marketplace/source
     typecheck:
-      run: pnpm nx affected -t typecheck --parallel=3 --exclude=@nx-base-template/source
+      run: pnpm nx affected -t typecheck --parallel=3 --exclude=@marketplace/source
     test:
-      run: pnpm nx affected -t test --parallel=3 --exclude=@nx-base-template/source
+      run: pnpm nx affected -t test --parallel=3 --exclude=@marketplace/source
     build:
-      run: pnpm nx affected -t build --parallel=3 --exclude=@nx-base-template/source
+      run: pnpm nx affected -t build --parallel=3 --exclude=@marketplace/source

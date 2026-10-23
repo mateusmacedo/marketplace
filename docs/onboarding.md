@@ -1,6 +1,6 @@
 # Onboarding
 
-Este guia leva um clone novo do `nx-base-template` até o primeiro PR.
+Este guia leva um clone novo do `marketplace` até o primeiro PR.
 
 Este repositório é um **template**: ele não traz apps prontas. O caminho normal é
 clonar, validar o ambiente e então gerar a primeira app ou lib do seu projeto.
@@ -10,7 +10,7 @@ clonar, validar o ambiente e então gerar a primeira app ou lib do seu projeto.
 - Node.js `^24` (ver `.nvmrc` / `.node-version`).
 - `pnpm@11.14.0`, conforme `packageManager` em `package.json`.
 - Corepack habilitado, para usar exatamente a versão declarada do pnpm.
-- Go na diretiva do `go.work` (hoje `1.26.9`), exigido pelo `@mateusmacedo/dmpf-plugin`.
+- Go na diretiva do `go.work` (hoje `1.26.10`), exigido pelo `@mateusmacedo/dmpf-plugin`.
 - Token do GitHub com o escopo `read:packages`: o `@mateusmacedo/dmpf-plugin` vem do
   GitHub Packages, que exige autenticação até para pacote público.
 
@@ -70,7 +70,7 @@ Hoje isso retorna apenas o metadado raiz:
 
 | Projeto Nx | Caminho |
 | --- | --- |
-| `@nx-base-template/source` | raiz (metadado, sem código) |
+| `@marketplace/source` | raiz (metadado, sem código) |
 
 O template não traz apps nem libs — `apps/*` e `libs/*` são diretórios de
 destino. Os projetos aparecem aqui conforme você os cria.
@@ -135,7 +135,7 @@ pnpm nx affected -t test
 pnpm nx affected -t build
 ```
 
-O pre-push usa esse padrão e exclui `@nx-base-template/source`.
+O pre-push usa esse padrão e exclui `@marketplace/source`.
 
 ## Hooks locais
 
@@ -144,7 +144,7 @@ O `lefthook.yml` define:
 - Pre-commit: `pnpm biome check --write` nos arquivos staged compatíveis, com
   `stage_fixed: true`.
 - Pre-push: `pnpm nx affected -t lint`, `typecheck`, `test` e `build`, com
-  `--parallel=3` e `--exclude=@nx-base-template/source`.
+  `--parallel=3` e `--exclude=@marketplace/source`.
 
 Se um hook alterar arquivos no pre-commit, revise o diff antes de concluir o
 commit.
@@ -207,7 +207,7 @@ versionado o conhecimento que precisa sobreviver ao plano antes de descartá-lo.
 ## Sincronização com o tracker
 
 O trabalho deste repositório é rastreado no Linear, no projeto
-[nx-base-template](https://linear.app/mmda/project/nx-base-template-db3f16eab767)
+[Marketplace](https://linear.app/mmda/project/marketplace-93d4e0c7bfef)
 (time DevTeam, chave `DEVS`). Projetos derivados escolhem o próprio tracker.
 
 - **Uma spec, uma issue**, com o título `[SPEC-<id>] <título da spec>`. A spec

@@ -3,8 +3,8 @@
 Este guia cobre só o que é próprio de um projeto criado a partir do template. A
 referência completa de consumo do DMPF é o guia do platform na versão fixada pelo
 plugin:
-[`docs/guides/dmpf-consumo-externo.md`](https://github.com/mateusmacedo/dmpf/blob/5def4d2d749bf8d5b2ef683f3cdc97eadf354c26/docs/guides/dmpf-consumo-externo.md)
-(commit `5def4d2`, o `workflowRef` do `@mateusmacedo/dmpf-plugin` `1.0.0-rc.3`).
+[`docs/guides/dmpf-consumo-externo.md`](https://github.com/mateusmacedo/dmpf/blob/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/docs/guides/dmpf-consumo-externo.md)
+(commit `ddd3d0c`, o `workflowRef` do `@mateusmacedo/dmpf-plugin` `1.0.0-rc.7`).
 
 ## Antes de começar
 
@@ -24,7 +24,7 @@ pnpm nx g @mateusmacedo/dmpf-plugin:init --modulePrefix=github.com/<org>/<repo> 
 ```
 
 O `init` reescreve os arquivos gerenciados que você não editou, mas não toca a semente
-`infra/local/docker-compose.yml`. Troque nela o `name: nx-base-template-local` por
+`infra/local/docker-compose.yml`. Troque nela o `name:` por
 `<repo>-local`.
 
 ## 2. Gerar o contexto
@@ -57,7 +57,7 @@ message PingResponse {}
 
 ## 3. Rodar os gates
 
-A mesma sequência do `tools/template-smoke.sh`:
+Sequência dos gates do DMPF:
 
 ```bash
 go list -m -f '{{.Path}}/...' | xargs go build
@@ -78,7 +78,7 @@ pnpm nx run-many -t buf-lint
 O contexto gerado já tem o bloco `provider`, que depende do módulo Postgres do kernel; o
 context-check lê o DDL desse módulo no cache de módulos do Go.
 
-No PR, o `ci.yml` cobre as stacks JS e o `template-smoke`; o `dmpf-ci.yml` cobre os
+No PR, o `ci.yml` cobre as stacks JS; o `dmpf-ci.yml` cobre os
 projetos Go e passa a valer a partir deste primeiro contexto.
 
 ## 4. Release

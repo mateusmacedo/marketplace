@@ -45,7 +45,7 @@
     "pnpm": "^11"
   },
   "license": "MIT",
-  "name": "@nx-base-template/source",
+  "name": "@marketplace/source",
   "packageManager": "pnpm@11.14.0",
   "private": true,
   "scripts": {

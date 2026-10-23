@@ -93,16 +93,16 @@ Ao mover arquivos ou pastas, verifique todos os imports afetados — inclusive o
 
 ## Visão geral e estrutura
 
-`nx-base-template` (workspace npm `@nx-base-template/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011), mas **não contém apps** — quem parte deste template cria as suas.
+`marketplace` (workspace npm `@marketplace/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011). A única app é o `bff`, a borda REST do DMPF (ADR-012); os bounded contexts do marketplace entram em `apps/backend/` conforme o `docs/roadmap.md`.
 
 Fonte de verdade dos projetos: `pnpm nx show projects`.
 
 ### Diretórios principais
 
 ```text
-nx-base-template/
+marketplace/
 ├── apps/
-│   ├── backend/                    # placeholder — sem projeto Nx
+│   ├── backend/bff/                # borda REST do DMPF (projeto Nx `bff`)
 │   ├── frontend/                   # placeholder — sem projeto Nx
 │   └── serverless/                 # placeholder — sem projeto Nx
 ├── libs/
@@ -124,8 +124,7 @@ nx-base-template/
 │   ├── docker/                     # Dockerfile de referência
 │   └── local/, k8s/, observability/, test/  # saída do dmpf-plugin — não editar à mão
 ├── tools/                          # generators, executors e scripts do workspace
-│   ├── dmpf-baseline/              # baseline de conformidade (saída do dmpf-plugin)
-│   └── template-smoke.sh           # smoke do template (contexto descartável)
+│   └── dmpf-baseline/              # baseline de conformidade (saída do dmpf-plugin)
 ├── .agents/skills/                 # skills de workspace (Nx) e dmpf-* (saída do dmpf-plugin)
 ├── .claude/                        # agents, skills e rules para assistentes
 ├── dmpf.json                       # configuração do DMPF (saída do init)
@@ -140,11 +139,15 @@ Apps Nest criadas a partir daqui seguem tipicamente `src/app/<feature>/` (contro
 
 ### Apps
 
-Nenhuma. `apps/backend`, `apps/frontend` e `apps/serverless` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira app, invoque a skill `nx-generate` antes de qualquer exploração.
+| Projeto | Caminho | Tags | Descrição |
+| --- | --- | --- | --- |
+| `bff` | `apps/backend/bff` | `type:app`, `scope:backend`, `stack:go`, `layer:apps` | Borda REST pública: autentica pelo Keycloak (`authn` do kernel), consulta a deny-list de revogação no Redis e expõe `GET /v1/me`; o papel `session-events` alimenta a deny-list. Detalhes em `apps/backend/bff/README.md` e na ADR-012. |
+
+`apps/frontend` e `apps/serverless` seguem como diretórios de destino. Bounded contexts nascem pelo `/dmpf-new-context`; outras apps, pela skill `nx-generate`.
 
 ### Libs
 
-Nenhuma. `libs/backend`, `libs/frontend` e `libs/shared` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira lib compartilhada, use o generator do Nx (`pnpm nx g @nx/js:lib libs/shared/<name>`), com as três tags 3D e `--linter=none`; o passo a passo com todas as flags está em `docs/nx-reference/tasks.md`. O `go.work` declara `go 1.26.9` (diretiva do `@mateusmacedo/dmpf-plugin`), mas não há módulos nem arquivos `.go` no workspace até o primeiro bounded context (ver `docs/guides/primeiro-bounded-context.md`).
+Nenhuma. `libs/backend`, `libs/frontend` e `libs/shared` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira lib compartilhada, use o generator do Nx (`pnpm nx g @nx/js:lib libs/shared/<name>`), com as três tags 3D e `--linter=none`; o passo a passo com todas as flags está em `docs/nx-reference/tasks.md`. O `go.work` declara `go 1.26.10` (diretiva do `@mateusmacedo/dmpf-plugin`), e o único módulo Go até o primeiro bounded context é o do `bff` (ver `docs/guides/primeiro-bounded-context.md`).
 
 Sem nenhum projeto com a tag `type:lib`, o `nx release` sai com erro (`Release group "__default__" matches no projects`) em vez de concluir vazio. Por isso o `nx-release.yml` tem o step `Detect lib release candidates`, que pula o versionamento e o push enquanto não houver lib — mesmo padrão do step de candidatos Docker. O pipeline fica armado e ocioso, não vermelho.
 
@@ -154,7 +157,7 @@ O prefixo dos pacotes é `@mateusmacedo/`, tudo em minúsculas. No GitHub Packag
 
 ## Comandos
 
-Sempre via `pnpm nx` — nunca o `nx` global. O root `@nx-base-template/source` tem targets `nx:noop`; exclua-o de operações em lote com `--exclude=@nx-base-template/source` (como no `lefthook` / CI).
+Sempre via `pnpm nx` — nunca o `nx` global. O root `@marketplace/source` tem targets `nx:noop`; exclua-o de operações em lote com `--exclude=@marketplace/source` (como no `lefthook` / CI).
 
 ```bash
 # Em lote (todos os projetos com o target)
@@ -193,17 +196,17 @@ Scripts raiz (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm fo
 - **Runtime:** Node.js `^24`; `pnpm@11.14.0` (campo `packageManager`). O CI não fixa a versão do pnpm: o `pnpm/action-setup` infere do `packageManager`, e passar ambos causa `ERR_PNPM_BAD_PM_VERSION`.
 - **Package manager:** pnpm (obrigatório). Versões de dependências são centralizadas no `catalog:` do `pnpm-workspace.yaml` — cada `package.json` referencia `"catalog:"`. O mesmo arquivo tem `allowBuilds`, que é a allowlist de scripts de postinstall: pacotes marcados `false` estão bloqueados deliberadamente.
 - **Nx:** `23.1.0`. NestJS `11.1.28` disponível via catalog.
-- **DMPF:** `@mateusmacedo/dmpf-plugin` `1.0.0-rc.3` pelo catalog, vindo do GitHub Packages. O `.npmrc` versionado só aponta o escopo `@mateusmacedo` para o registry; a credencial fica no npmrc de usuário (`~/.npmrc` localmente, `$RUNNER_TEMP/npmrc` + `NPM_CONFIG_USERCONFIG` no CI), porque o pnpm 11.5.3+ ignora `${VAR}` em credencial do `.npmrc` do projeto. Arquivos DMPF são saída do `init` e só mudam por `nx migrate` (ADR-011); o Biome os exclui (`dmpf.json`, `dmpf.rendered.json`, `infra/`, `tools/dmpf-baseline/`). Versão recém-publicada do plugin entra no `minimumReleaseAgeExclude` do pnpm.
+- **DMPF:** `@mateusmacedo/dmpf-plugin` `1.0.0-rc.7` pelo catalog, vindo do GitHub Packages. O `.npmrc` versionado só aponta o escopo `@mateusmacedo` para o registry; a credencial fica no npmrc de usuário (`~/.npmrc` localmente, `$RUNNER_TEMP/npmrc` + `NPM_CONFIG_USERCONFIG` no CI), porque o pnpm 11.5.3+ ignora `${VAR}` em credencial do `.npmrc` do projeto. Arquivos DMPF são saída do `init` e só mudam por `nx migrate` (ADR-011); o Biome os exclui (`dmpf.json`, `dmpf.rendered.json`, `infra/`, `tools/dmpf-baseline/`). Versão recém-publicada do plugin entra no `minimumReleaseAgeExclude` do pnpm.
 - **Lint + format:** **Biome 2.4.16** é a ferramenta principal de format/lint. Estilo: 2 espaços, `lineWidth` 100, aspas simples, trailing commas `all`, semicolons sempre, arrow parens sempre. Regras notáveis: `noUnusedVariables: error`, `noExplicitAny: warn` e `useImportType: error` — neste workspace `import type` é obrigatório, não preferência. O parser tem `unsafeParameterDecoratorsEnabled: true` para suportar decorators de parâmetro do NestJS.
 - **Testes:** Jest 30 transpilado por **SWC** (`@swc/jest`), config em `.spec.swcrc` (decorators + `keepClassNames` para DI do NestJS). O preset em `jest.preset.js` usa `passWithNoTests: true`, então projeto sem teste não quebra o lote.
 - **TypeScript:** `strict: true`, `module`/`moduleResolution: nodenext`, `target: es2022`, Project References (`composite: true`, `emitDeclarationOnly: true`). O `tsconfig.base.json` tem `paths` vazio e o `tsconfig.json` tem `references` vazio: cada lib nova acrescenta a própria entrada nos dois.
-- **Git hooks:** Lefthook (não husky), instalado via `pnpm prepare`. O script é tolerante a falha (`lefthook install || true`), para não quebrar `pnpm install` em ambiente sem o binário. `pre-commit` roda `biome check --write` nos arquivos staged; `pre-push` roda `nx affected` de lint/typecheck/test/build com `--parallel=3`, excluindo `@nx-base-template/source`.
+- **Git hooks:** Lefthook (não husky), instalado via `pnpm prepare`. O script é tolerante a falha (`lefthook install || true`), para não quebrar `pnpm install` em ambiente sem o binário. `pre-commit` roda `biome check --write` nos arquivos staged; `pre-push` roda `nx affected` de lint/typecheck/test/build com `--parallel=3`, excluindo `@marketplace/source`.
 
 ---
 
 ## Convenções obrigatórias
 
-- **Tags 3D em todo app/lib de produção:** uma de cada dimensão, conforme a taxonomia canônica abaixo. Ex.: `["type:lib", "scope:shared", "stack:node"]`. O publish npm do Nx Release cobre só projetos `type:lib` fora de Go (`tag:type:lib,!tag:stack:go`), organizados em grupos de release que nascem com o primeiro membro (ver "Release por grupos" em `docs/nx-reference/tasks.md`). Exceção conhecida: `@nx-base-template/source` (metadado raiz).
+- **Tags 3D em todo app/lib de produção:** uma de cada dimensão, conforme a taxonomia canônica abaixo. Ex.: `["type:lib", "scope:shared", "stack:node"]`. O publish npm do Nx Release cobre só projetos `type:lib` fora de Go (`tag:type:lib,!tag:stack:go`), organizados em grupos de release que nascem com o primeiro membro (ver "Release por grupos" em `docs/nx-reference/tasks.md`). Exceção conhecida: `@marketplace/source` (metadado raiz).
 
   | Dimensão | Valores válidos |
   | --- | --- |
@@ -220,7 +223,7 @@ Scripts raiz (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm fo
 ## Git e release
 
 - **Plataforma:** **GitHub** (`github.com/mateusmacedo/dmpf-nx-template`, repositório marcado como template). O `gh` CLI opera normalmente contra ele. Decisão e contexto da migração em `docs/adr/010-migracao-github-linear.md` (ADR-010, que supersede a ADR-005).
-- **Tracker:** projeto [nx-base-template](https://linear.app/mmda/project/nx-base-template-db3f16eab767) no Linear (time DevTeam, chave `DEVS`). Cada spec tem uma issue, ligada pelo `ticket_url` do frontmatter; branch e título de PR levam a chave `DEVS-<n>`. Regras de sincronização: `docs/onboarding.md`.
+- **Tracker:** projeto [Marketplace](https://linear.app/mmda/project/marketplace-93d4e0c7bfef) no Linear (time DevTeam, chave `DEVS`). Cada spec tem uma issue, ligada pelo `ticket_url` do frontmatter; branch e título de PR levam a chave `DEVS-<n>`. Regras de sincronização: `docs/onboarding.md`.
 - **Branches protegidas:** `master` e `develop`, por rulesets do GitHub. `develop` exige PR e o check do CI verde, sem deleção e sem force push. `master` fica sem deleção e sem force push; o bot de release empurra nela o commit de versão e as tags. `defaultBase` do Nx é `master`.
 - **Fluxo (git-flow):** trabalho → `develop` (validação) → `release/X.Y.Z` (após validar) → `master`. Antes do PR para `develop`, a branch de trabalho mergeia `release/X.Y.Z` (updates já aprovados). PRs de feature comparam contra `origin/develop` por padrão.
 - **Anti-drift (duro):** ao promover para `release`, usar a **mesma árvore** já mergeada em `develop` (mesmo tip da feature). Não abrir promoção paralela com resolução/conteúdo diferente — isso faz o merge `release` → branch de trabalho reabrir os mesmos conflitos. Detalhe em `CONTRIBUTING.md`.
@@ -230,7 +233,7 @@ Scripts raiz (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm fo
   - `nx-publish-libs.yml` é a republicação **manual** (dispatch com os inputs `tag` e `ref`), pelo mesmo `publish-libs.yaml`, para quando a publicação encadeada falhar.
   - A publicação das libs vai para o GitHub Packages (`https://npm.pkg.github.com`, escopo `@mateusmacedo`), autenticada no CI só com `secrets.GITHUB_TOKEN` (`packages: write`). Quem consome libs publicadas usa um token com `read:packages` no `~/.npmrc` (`//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`) e `@mateusmacedo:registry=https://npm.pkg.github.com` no `.npmrc` do projeto.
   - A separação entre versionamento e publicação vem da ADR-004; o alvo de publicação e o runner atuais seguem a ADR-010, que a supersede em parte.
-- **CI:** `.github/workflows/ci.yml` roda em PRs para `master`, `develop` e `release/**` (ignora mudanças só em `**/*.md` e em `.github/ISSUE_TEMPLATE/**`), no runner `ubuntu-26.04`: `biome ci`, depois `nx affected` de lint, typecheck, test (com `--ci --coverage`), build e e2e, excluindo `tag:stack:go`; em paralelo, o job `template-smoke` roda `tools/template-smoke.sh`. Os projetos Go passam pelo `.github/workflows/dmpf-ci.yml`, saída do `init` que chama o reutilizável do platform fixado por SHA; no template, sem módulo Go, ele falha no gate de conformance e não é check obrigatório.
+- **CI:** `.github/workflows/ci.yml` roda em PRs para `master`, `develop` e `release/**` (ignora mudanças só em `**/*.md` e em `.github/ISSUE_TEMPLATE/**`), no runner `ubuntu-26.04`: `biome ci`, depois `nx affected` de lint, typecheck, test (com `--ci --coverage`), build e e2e, excluindo `tag:stack:go`. Os projetos Go passam pelo `.github/workflows/dmpf-ci.yml`, saída do `init` que chama o reutilizável do platform fixado por SHA; sem bounded context, ele falha no `gate-check` por falta de provider de contexto e não é check obrigatório (ADR-012).
 - **Demais workflows:** `publish-libs.yaml` e `detect-apps.yaml` são reutilizáveis **locais** (`on: workflow_call`), chamados por `uses: ./.github/workflows/...`. O `cd-dev-hmg.yml` é um **template de CD desligado**, com apenas `workflow_dispatch` e o job de deploy comentado (ver `docs/ci-cd/`); seu job `detect` usa o `detect-apps.yaml` local, e o deploy comentado aponta para `./.github/workflows/deploy-eks.yaml`, reutilizável que **não existe** neste repositório. Ele deve ser criado quando o CD for ligado, com roles AWS, registry e repositório de infraestrutura do próprio projeto; o mesmo vale para os modelos ECS, on-premises e Lambda.
 
 ---
@@ -284,7 +287,7 @@ Utilize Biome, typecheck, Jest e os hooks Lefthook configurados. O princípio �
 
 ```bash
 pnpm biome check --write .
-pnpm nx affected -t lint,typecheck,test,build --exclude=@nx-base-template/source
+pnpm nx affected -t lint,typecheck,test,build --exclude=@marketplace/source
 ```
 
 (Ajuste o conjunto de targets ao impacto da mudança.)

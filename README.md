@@ -1,4 +1,4 @@
-# nx-base-template
+# marketplace
 
 Baseline de monorepo Nx multistack — Express, Fastify, NestJS, Next.js, Angular e
 bounded contexts Go do DMPF no mesmo workspace.
@@ -7,7 +7,7 @@ bounded contexts Go do DMPF no mesmo workspace.
 
 - Node.js `24` (ver `.nvmrc` / `.node-version`)
 - pnpm `11` (habilite via `corepack enable`)
-- Go na diretiva do `go.work` (`1.26.9` com o `@mateusmacedo/dmpf-plugin` `1.0.0-rc.3`), `bash`, `jq` e `git`
+- Go na diretiva do `go.work` (`1.26.10` com o `@mateusmacedo/dmpf-plugin` `1.0.0-rc.7`), `bash`, `jq` e `git`
 - Token do GitHub com o escopo `read:packages`, porque o `@mateusmacedo/dmpf-plugin` vem do
   GitHub Packages, que exige autenticação até para pacote público
 
@@ -53,7 +53,7 @@ pnpm nx g @mateusmacedo/dmpf-plugin:init --modulePrefix=github.com/<org>/<repo> 
 ```
 
 O `init` não reescreve a semente `infra/local/docker-compose.yml`: troque à mão o
-`name: nx-base-template-local` dela por `<repo>-local`. Enquanto o prefixo for
+`name:` dela por `<repo>-local`. Enquanto o prefixo for
 `example.com/change-me`, o `bounded-context` recusa rodar e imprime o comando do passo 3.
 
 ```bash
@@ -100,7 +100,7 @@ pnpm nx migrate --run-migrations
 ## Estrutura de diretórios
 
 ```
-nx-base-template/
+marketplace/
 ├── apps/                        # Aplicações executáveis
 │   └── <stack>-<name>/
 │   └── <stack>-<name>-e2e/
@@ -121,12 +121,11 @@ nx-base-template/
 ├── tools/
 │   ├── generators/              # Nx generators do workspace (vazio)
 │   ├── executors/               # Nx executors customizados
-│   ├── dmpf-baseline/           # Baseline de conformidade (saída do dmpf-plugin)
-│   └── template-smoke.sh        # Smoke do template (gera e valida um contexto descartável)
+│   └── dmpf-baseline/           # Baseline de conformidade (saída do dmpf-plugin)
 ├── infra/                       # Infra local, k8s e observabilidade (saída do dmpf-plugin)
 ├── docs/
 │   └── adr/                     # Architecture Decision Records
-├── .github/workflows/ci.yml     # CI com nx affected + template-smoke
+├── .github/workflows/ci.yml     # CI com nx affected
 ├── .github/workflows/dmpf-ci.yml # CI Go do DMPF (workflow reutilizável do platform)
 ├── dmpf.json                    # Configuração do DMPF (saída do init)
 ├── go.work                      # Workspace Go (diretiva do dmpf-plugin)
@@ -216,12 +215,8 @@ pela mudança (`nx affected`), na ordem:
 
 Os projetos Go (`tag:stack:go`) ficam fora desse pipeline e passam pelo
 `.github/workflows/dmpf-ci.yml`, que chama o workflow reutilizável do platform fixado por
-SHA. No template, sem nenhum módulo Go, o gate de conformance desse workflow falha: ele não é
-check obrigatório e passa a valer no projeto derivado a partir do primeiro contexto.
-
-O job `template-smoke` do `ci.yml` roda `tools/template-smoke.sh`, que copia o working tree
-para um repositório descartável, gera um bounded context e passa pelos gates do DMPF. Para
-rodar localmente: `bash tools/template-smoke.sh`.
+SHA. Sem bounded context, o `gate-check` desse workflow falha por falta de provider de contexto
+(ADR-012): ele não é check obrigatório e passa a valer a partir do primeiro contexto.
 
 ## Testes
 

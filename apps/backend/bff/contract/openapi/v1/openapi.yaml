@@ -1,0 +1,153 @@
+openapi: 3.1.0
+info:
+  title: bff
+  version: 1.0.0
+  description: >-
+    Public REST edge of the marketplace. Every route authenticates the bearer
+    access token issued by the identity provider and resolves the tenant from
+    it; identity asserted by the client is never a source and, when it
+    diverges from the token, is refused.
+paths:
+  /v1/me:
+    get:
+      operationId: me
+      summary: Identity resolved from the access token
+      description: >-
+        Answers the subject and the tenant the edge resolved from the verified
+        access token. Requires one organization in the token and the `profile`
+        permission.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/AssertedTenant'
+        - $ref: '#/components/parameters/AssertedSubject'
+        - $ref: '#/components/parameters/AssertedTenantQuery'
+      responses:
+        '200':
+          description: The identity of the caller.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        default:
+          $ref: '#/components/responses/Failure'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Correlation of the request; a malformed value is replaced by one the edge mints.
+      schema:
+        type: string
+        maxLength: 128
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional on a read; when present it must have the accepted form, or the request is refused with invalid-idempotency-key.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+        maxLength: 128
+    AssertedTenant:
+      name: X-Tenant-ID
+      in: header
+      required: false
+      description: Never read as the tenant. A value different from the tenant of the token is refused with identity-mismatch.
+      schema:
+        type: string
+    AssertedSubject:
+      name: X-Subject-ID
+      in: header
+      required: false
+      description: Never read as the subject. A value different from the subject of the token is refused with identity-mismatch.
+      schema:
+        type: string
+    AssertedTenantQuery:
+      name: tenant_id
+      in: query
+      required: false
+      description: Never read as the tenant. A value different from the tenant of the token is refused with identity-mismatch.
+      schema:
+        type: string
+  headers:
+    CorrelationId:
+      description: Correlation the edge kept or minted for the request.
+      schema:
+        type: string
+  schemas:
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [subject, tenant]
+      properties:
+        subject:
+          type: string
+          description: The sub claim of the access token.
+        tenant:
+          type: string
+          description: The tenant_id of the one organization in the access token.
+    Rejection:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable code of the refusal.
+        message:
+          type: string
+          description: Human-readable reason, never carrying internal detail.
+  responses:
+    InvalidRequest:
+      description: The request carries an Idempotency-Key outside the accepted form (code invalid-idempotency-key).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Unauthenticated:
+      description: No credential, or one that is invalid, expired or revoked (code unauthenticated).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Forbidden:
+      description: >-
+        The token verified but resolves no single tenant (tenant-unresolved),
+        lacks the permission of the route (permission-denied), or the request
+        asserts another identity (identity-mismatch).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    AdmissionRefused:
+      description: The tenant exhausted its admission budget (code admission-refused).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Failure:
+      description: The request could not be completed (code internal-failure).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'

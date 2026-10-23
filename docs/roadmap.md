@@ -14,6 +14,9 @@ e detalhada quando o pipeline de feature a puxar.
 
 - **Stack**: serviços em Go gerados pelo `@mateusmacedo/dmpf-plugin` (ADR-011).
   As menções a Java Quarkus em `docs/product/` não valem para a implementação.
+- **Borda e infraestrutura do DMPF** (ADR-012): Keycloak como IdP, token
+  verificado no `bff`, Redpanda como broker e borda REST. Logto, Traefik,
+  RabbitMQ e GraphQL de `docs/product/` não valem para a implementação.
 - **Multi-tenant desde o MVP**: `tenant_id` como discriminador em todos os
   contextos; tema, domínios e feature flags por tenant só a partir da V2.
 - **Catálogo e Inventário separados**, como no Context Mapping.

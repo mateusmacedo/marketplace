@@ -159,10 +159,10 @@ pelo formatter e depois valide apenas o que foi afetado:
 
 ```bash
 pnpm biome check --write .
-pnpm nx affected -t lint,typecheck,test,build --exclude=@nx-base-template/source
+pnpm nx affected -t lint,typecheck,test,build --exclude=@marketplace/source
 ```
 
-O `--exclude=@nx-base-template/source` retira o projeto raiz (targets `nx:noop`)
+O `--exclude=@marketplace/source` retira o projeto raiz (targets `nx:noop`)
 das operações em lote. Os hooks reforçam a mesma validação: `pre-commit` roda
 `biome check --write` nos arquivos em stage e `pre-push` roda lint, typecheck,
 test e build nos projetos afetados. Confie nos hooks — mantenha-os ativos em vez
