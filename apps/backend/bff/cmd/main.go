@@ -1,0 +1,120 @@
+// Command bff runs the public REST edge of the marketplace, configured only
+// through the environment.
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	kernelhttp "github.com/mateusmacedo/dmpf/libs/backend/go/http"
+	"github.com/mateusmacedo/dmpf/libs/backend/go/transport/deadline"
+
+	"github.com/mateusmacedo/marketplace/apps/backend/bff/app"
+	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/api"
+)
+
+// A refused start must never read as a failed run to whoever only checks
+// "non-zero".
+const (
+	exitOK      = 0
+	exitFailure = 1
+	exitUsage   = 2
+)
+
+const (
+	healthcheckCommand   = "healthcheck"
+	sessionEventsCommand = "session-events"
+	probeTimeout         = 3 * time.Second
+
+	envAdminAddr = "ADMIN_ADDR"
+)
+
+func main() {
+	os.Exit(run(options{lookup: os.Getenv, args: os.Args[1:]}, os.Stderr))
+}
+
+type options struct {
+	lookup func(string) string
+	args   []string
+	// routes is what the start validates; nil is the routes the edge serves.
+	routes func(deadline.Budget) []kernelhttp.Route
+}
+
+func run(o options, errOut io.Writer) int {
+	switch {
+	case len(o.args) > 0 && o.args[0] == healthcheckCommand:
+		return healthcheck(o.lookup, errOut)
+	case len(o.args) > 1 && o.args[0] == sessionEventsCommand && o.args[1] == healthcheckCommand:
+		return sessionEventsHealthcheck(o.lookup, errOut)
+	case len(o.args) > 0 && o.args[0] == sessionEventsCommand:
+		return runSessionEvents(o.lookup, errOut)
+	}
+	cfg, err := app.FromEnv(o.lookup)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "bff: %v\n", err)
+		return exitUsage
+	}
+	routes := o.routes
+	if routes == nil {
+		routes = api.Routes
+	}
+	if err := api.ValidateRoutes(routes(cfg.RouteBudget)); err != nil {
+		_, _ = fmt.Fprintf(errOut, "bff: %v\n", err)
+		return exitUsage
+	}
+	return serve(errOut, func(ctx context.Context) error { return app.Run(ctx, cfg) })
+}
+
+func runSessionEvents(lookup func(string) string, errOut io.Writer) int {
+	cfg, err := app.SessionEventsFromEnv(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "bff session-events: %v\n", err)
+		return exitUsage
+	}
+	return serve(errOut, func(ctx context.Context) error { return app.RunSessionEvents(ctx, cfg) })
+}
+
+func serve(errOut io.Writer, start func(context.Context) error) int {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	if err := start(ctx); err != nil {
+		_, _ = fmt.Fprintf(errOut, "bff: %v\n", err)
+		return exitFailure
+	}
+	return exitOK
+}
+
+// WHY: Docker's HEALTHCHECK reads only 0 and 1 and reserves 2, so a
+// configuration the edge could not start with is a failure, not a usage error.
+func healthcheck(lookup func(string) string, errOut io.Writer) int {
+	cfg, err := app.FromEnv(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "bff healthcheck: %v\n", err)
+		return exitFailure
+	}
+	return probe(cfg.AdminAddr, errOut)
+}
+
+func sessionEventsHealthcheck(lookup func(string) string, errOut io.Writer) int {
+	addr := app.SessionEventsDefaults().AdminAddr
+	if declared := lookup(envAdminAddr); declared != "" {
+		addr = declared
+	}
+	return probe(addr, errOut)
+}
+
+func probe(adminAddr string, errOut io.Writer) int {
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	if err := app.Probe(ctx, app.Config{AdminAddr: adminAddr}); err != nil {
+		_, _ = fmt.Fprintf(errOut, "bff healthcheck: %v\n", err)
+		return exitFailure
+	}
+	return exitOK
+}

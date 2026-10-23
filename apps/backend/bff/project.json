@@ -1,0 +1,154 @@
+{
+  "name": "bff",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/backend/bff",
+  "tags": ["type:app", "scope:backend", "stack:go", "layer:apps"],
+  "targets": {
+    "tidy": {
+      "executor": "@mateusmacedo/dmpf-plugin:go-tidy",
+      "cache": false
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["go", "^go"],
+      "options": {
+        "command": "saida=\"$(gofmt -l . 2>&1)\"; status=$?; [ $status -eq 0 ] || { printf '%s\\n' \"$saida\" >&2; exit $status; }; [ -z \"$saida\" ] || { printf '%s\\n' \"$saida\" >&2; exit 1; }",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "vet": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["go", "^go"],
+      "options": {
+        "command": "go vet ./...",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["go", "^go"],
+      "options": {
+        "command": "go build ./...",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-race": {
+      "executor": "@mateusmacedo/dmpf-plugin:test-env",
+      "cache": true,
+      "inputs": [
+        "go",
+        "^go",
+        "{workspaceRoot}/apps/backend/bff/deploy/.env.example",
+        "{workspaceRoot}/infra/test/compose.yml",
+        "{workspaceRoot}/.env.example",
+        "{workspaceRoot}/node_modules/@mateusmacedo/dmpf-plugin/scripts/test-env.sh",
+        {
+          "env": "CI"
+        }
+      ],
+      "options": {
+        "command": "go test -race -count=1 -p 1 -tags=integration ./..."
+      },
+      "dependsOn": ["test-infra-up"]
+    },
+    "govulncheck": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-infra-up": {
+      "executor": "@mateusmacedo/dmpf-plugin:test-infra",
+      "cache": false,
+      "options": {
+        "action": "up"
+      }
+    },
+    "test-infra-down": {
+      "executor": "@mateusmacedo/dmpf-plugin:test-infra",
+      "cache": false,
+      "options": {
+        "action": "down"
+      }
+    },
+    "test-keycloak": {
+      "executor": "@mateusmacedo/dmpf-plugin:test-env",
+      "cache": false,
+      "options": {
+        "command": "bash scripts/test-keycloak.sh"
+      }
+    },
+    "nx-release-publish": {
+      "executor": "nx:noop"
+    },
+    "deploy-env": {
+      "options": {
+        "command": "[ -f deploy/.env ] || cp deploy/.env.example deploy/.env; [ -f deploy/.env.session-events ] || cp deploy/.env.session-events.example deploy/.env.session-events"
+      }
+    },
+    "redis-up": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f infra/local/docker-compose.yml --profile redis up -d --wait redis",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "keycloak-up": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f infra/local/docker-compose.yml --profile keycloak up -d --wait keycloak",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "set -a; [ ! -f deploy/.env ] || . deploy/.env; set +a; exec go run ./cmd",
+        "cwd": "{projectRoot}",
+        "envFile": "{projectRoot}/deploy/.env.example"
+      },
+      "continuous": true,
+      "dependsOn": ["redis-up"]
+    },
+    "serve-session-events": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "set -a; [ ! -f deploy/.env ] || . deploy/.env; . deploy/.env.session-events.example; [ ! -f deploy/.env.session-events ] || . deploy/.env.session-events; OTEL_RESOURCE_ATTRIBUTES=\"${OTEL_RESOURCE_ATTRIBUTES:+$OTEL_RESOURCE_ATTRIBUTES,}service.instance.id=bff-local-session-events,dmpf.process.role=session-events\"; set +a; exec go run ./cmd session-events",
+        "cwd": "{projectRoot}",
+        "envFile": "{projectRoot}/deploy/.env.example"
+      },
+      "continuous": true,
+      "dependsOn": ["redis-up", "keycloak-up"]
+    },
+    "docker:build": {
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "args": ["--file apps/backend/bff/Dockerfile", "--tag apps-backend-bff", "--tag bff:local"]
+      }
+    },
+    "docker:run": {
+      "options": {
+        "args": ["--rm", "--name bff", "--network host", "--env-file deploy/.env"]
+      },
+      "dependsOn": ["deploy-env", "docker:build", "redis-up"]
+    },
+    "k8s-render": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "kubectl kustomize apps/backend/bff/deploy/k8s/overlays/dev > /dev/null",
+          "kubectl kustomize apps/backend/bff/deploy/k8s/overlays/hmg > /dev/null",
+          "kubectl kustomize infra/k8s/overlays/dev/apps > /dev/null",
+          "kubectl kustomize infra/k8s/overlays/hmg/apps > /dev/null"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

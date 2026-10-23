@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bff
+data:
+  # Sem servidor de autorização em dev: a identidade vem do próprio Bearer, sem
+  # verificação. Em hmg o BFF verifica por OIDC.
+  AUTH_DEV_MOCK: 'true'
+  OTEL_RESOURCE_ATTRIBUTES: service.version=dev,deployment.environment.name=dev

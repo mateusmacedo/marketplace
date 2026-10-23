@@ -1,6 +1,19 @@
 {
   "schema": "dmpf/units-baseline@1",
-  "digest": "sha256:374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb",
-  "entries": [],
+  "digest": "sha256:fd1cf51a219d17e3ff959675074e53944eb9fb73d57aa3cc3f6fe3a45c4cc08f",
+  "entries": [
+    {
+      "unit": "bff/app",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/bff",
+      "block": "app",
+      "bounded_context": "bff",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/bff/app",
+        "github.com/mateusmacedo/marketplace/apps/backend/bff/app/api",
+        "github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc",
+        "github.com/mateusmacedo/marketplace/apps/backend/bff/cmd"
+      ]
+    }
+  ],
   "shared_kernel_units": []
 }

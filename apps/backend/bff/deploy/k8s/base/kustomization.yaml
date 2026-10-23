@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# BFF: a única borda REST pública (RST-01), sem banco nem Kafka, e o papel
+# session-events, que alimenta a deny-list que a borda consulta. A URL do Redis
+# vem do Secret redis, que a base não conhece.
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/name: bff
+      app.kubernetes.io/part-of: dmpf
+
+resources:
+  - serviceaccount.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - deployment-session-events.yaml
+  - service.yaml
+  - service-session-events.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+  - networkpolicy-session-events.yaml
