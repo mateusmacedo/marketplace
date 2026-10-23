@@ -136,3 +136,19 @@ Registrado pela SPEC-XB4NCW4J (DEVS-144), com o primeiro bounded context,
   desenvolvimento, ou mTLS) passa a ser obrigatório, e o overlay `hmg` do `bff`
   foi portado do molde.
 - O modelo de tenant que `tenancy` inaugura está na [ADR-013](./013-tenant-e-a-loja-do-seller.md).
+- **O `AUTH_DEV_MOCK` vale só nas suítes de teste** (unitárias e e2e). O compose
+  local e o overlay `dev` passam a autenticar pelo Keycloak de referência, com a
+  API do `bff` em OIDC contra o realm `dmpf` (`OIDC_ISSUER`, `OIDC_AUDIENCE=dmpf-bff`,
+  `OIDC_TENANT_CLAIM=organization.*.tenant_id`), e a revogação passa a valer neles
+  também. Um seed complementar, idempotente e fora de `infra/`
+  (`apps/backend/bff/deploy/keycloak/seed.sh`), roda depois do seed gerado: no
+  compose, como serviço `bff-keycloak-seed` do profile `keycloak`; no overlay
+  `dev`, como Job `bff-keycloak-seed` de um Component do próprio `bff`. Ele cria a
+  Organization `marketplace` (`tenant_id=marketplace`), as realm roles
+  `tenancy:read` e `tenancy:write`, o usuário `operator`, membro só dessa
+  organização, e o client público `marketplace-dev`, com password grant, os scopes
+  `profile` e `organization` por padrão e a audiência `dmpf-bff`. O password grant
+  é aceito só porque o client existe apenas nesse seed de desenvolvimento; o
+  `dmpf-portal`, com PKCE, segue sendo o client de quem usa navegador. A API do
+  `bff` no compose passa a depender do profile `keycloak`; sem ele, ela não passa
+  da descoberta OIDC.

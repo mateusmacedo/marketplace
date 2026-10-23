@@ -257,6 +257,20 @@ está registrado na ADR-013 (`docs/adr/013-tenant-e-a-loja-do-seller.md`).
 - **Auditoria**: pela trilha de auditoria do kernel (FND-08;
   `observability/audit`).
 
+## Ambiente de desenvolvimento
+
+- O `AUTH_DEV_MOCK` vale só dentro das suítes de teste (unitárias e e2e).
+  Todo ambiente que se sobe para uso — o compose local e o overlay `dev` do
+  k8s — autentica pelo Keycloak de referência, com o `bff` em OIDC contra o
+  realm `dmpf`.
+- Um seed complementar do projeto, idempotente e fora de `infra/` (que é saída
+  do dmpf-plugin), roda depois do seed gerado e deixa prontos a Organization
+  do operador `marketplace` (atributo `tenant_id=marketplace`), as roles
+  `tenancy:read` e `tenancy:write`, um usuário operador membro dessa
+  organização com as duas roles e o que o Swagger precisa para obter o token.
+- Um comando do projeto obtém o JWT do operador, para uso no Swagger e em
+  chamadas manuais.
+
 ## Critérios de aceite
 
 - [x] Os gates do workspace verdes para `tenancy` (`fmt-check`, `vet`,
@@ -270,6 +284,9 @@ está registrado na ADR-013 (`docs/adr/013-tenant-e-a-loja-do-seller.md`).
   contexto".
 - [x] As cinco rotas no `bff`, com teste de rota por desfecho, e o `tenancy`
   na readiness e no e2e do `bff`.
+- [x] Ao subir o compose (`--profile dmpf --profile keycloak`), o operador
+  obtém um JWT pelo comando do projeto e registra uma loja pelo `bff` sem
+  `AUTH_DEV_MOCK`; o overlay `dev` do k8s renderiza sem `AUTH_DEV_MOCK`.
 - [x] Cenários:
 
 ```text
@@ -338,10 +355,10 @@ ENTÃO devolve exatamente as duas, fora de qualquer UoW
 - **Provisionamento no Keycloak**: no MVP, a Organization de cada loja (com o
   atributo `tenant_id`), a do operador e as permissões `tenancy:write|read`
   são criadas fora do sistema; são pré-condição de deploy fora de
-  desenvolvimento, conferida por smoke autenticado. Em desenvolvimento, o
-  operador reservado `marketplace` entra pelo `AUTH_DEV_MOCK`. Automatizar
-  pelo ciclo de comando externo de saída (ADR-070 do platform) fica para o
-  onboarding self-service (V2).
+  desenvolvimento, conferida por smoke autenticado. Automatizar pelo ciclo de
+  comando externo de saída (ADR-070 do platform) fica para o onboarding
+  self-service (V2). Os ambientes de desenvolvimento ficam fora desta
+  exclusão: ver *Ambiente de desenvolvimento*.
 - **Renomear loja e encerrar loja**: sem comando no MVP.
 - **Tema, domínios customizados e projeção domínio→tenant** (V2).
 - **Feature flags e credenciais por tenant via Vault** (V2).
