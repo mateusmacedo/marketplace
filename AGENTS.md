@@ -106,7 +106,7 @@ marketplace/
 │   ├── frontend/                   # placeholder — sem projeto Nx
 │   └── serverless/                 # placeholder — sem projeto Nx
 ├── libs/
-│   ├── backend/bff/                # borda REST do DMPF (projeto Nx `bff`)
+│   ├── backend/                    # placeholder — sem projeto Nx
 │   ├── frontend/                   # placeholder — sem projeto Nx
 │   └── shared/                     # placeholder — sem projeto Nx
 ├── docs/
