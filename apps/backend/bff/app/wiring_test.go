@@ -45,7 +45,8 @@ type edge struct {
 
 func startEdge(t *testing.T, env ...string) edge {
 	t.Helper()
-	base := []string{"REDIS_URL", unreachableDenyList, "HTTP_ADDR", "127.0.0.1:0", "ADMIN_ADDR", "127.0.0.1:0"}
+	base := []string{"REDIS_URL", unreachableDenyList, "HTTP_ADDR", "127.0.0.1:0", "ADMIN_ADDR", "127.0.0.1:0",
+		"TENANCY_GRPC_TARGET", serveTenancy(t), "GRPC_INSECURE", "true"}
 	cfg, err := app.FromEnv(lookup(append(base, env...)...))
 	if err != nil {
 		t.Fatalf("FromEnv() = %v", err)
@@ -236,7 +237,7 @@ func TestTheAdministrationPortServesLivenessAndReadinessWithoutCredential(t *tes
 		t.Fatalf("GET /livez = %d, want 204 while the process serves", status)
 	}
 	if status := e.probe(t, http.MethodGet, "/readyz"); status != http.StatusNoContent {
-		t.Fatalf("GET /readyz = %d, want 204 while the process serves: no context is probed", status)
+		t.Fatalf("GET /readyz = %d, want 204 while the process and its context serve", status)
 	}
 	e.stop(t)
 }

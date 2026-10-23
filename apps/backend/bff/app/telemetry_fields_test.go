@@ -24,10 +24,14 @@ var edgeTelemetry = obstest.Subject[app.Config, string]{
 	Scope:       reflect.TypeFor[app.Config]().PkgPath(),
 }
 
-var sentinels = []string{"sentinel-tenant", "sentinel-redis-password"}
+var sentinels = []string{"sentinel-client-key", "sentinel-tenant", "sentinel-redis-password"}
 
 func configWithSecrets() app.Config {
 	cfg := app.Defaults()
+	cfg.CAFile = "/tls/ca.crt"
+	cfg.ServerName = "contexts.internal"
+	cfg.ClientCertFile = "/tls/client.crt"
+	cfg.ClientKeyFile = "/tls/sentinel-client-key.pem"
 	cfg.CORSOrigins = []string{"https://app.example"}
 	cfg.MetricTenants = []string{"sentinel-tenant-a", "sentinel-tenant-b"}
 	cfg.DrainDelay = 5 * time.Second
@@ -45,8 +49,9 @@ func TestTheProcessConfiguredRecordCarriesTheAllowlistOfTheEdge(t *testing.T) {
 
 	got := obstest.SettingKeys(record)
 	want := []string{"admin_addr", "authn.audience", "authn.dev_mock", "authn.discovery_timeout", "authn.issuer", "authn.permission_claims",
-		"authn.revocation", "authn.tenant_claim", "cors_origins", "drain_delay", "http_addr", "metric_tenants", "redis.addr",
-		"redis.command_timeout", "redis.dial_timeout", "redis.tls", "redis.username"}
+		"authn.revocation", "authn.tenant_claim", "cors_origins", "drain_delay", "grpc_ca_file", "grpc_client_cert_file",
+		"grpc_client_key_file", "grpc_insecure", "grpc_server_name", "http_addr", "metric_tenants", "openapi_tenancy_path", "redis.addr",
+		"redis.command_timeout", "redis.dial_timeout", "redis.tls", "redis.username", "tenancy_grpc_target"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("dmpf.config.* = %v, want exactly the settings of the edge %v", got, want)
 	}
@@ -76,6 +81,9 @@ func TestTheProcessConfiguredRecordCarriesNoSecret(t *testing.T) {
 	}
 	if got := record["dmpf.config.metric_tenants"]; got.GetIntValue() != 2 {
 		t.Errorf("dmpf.config.metric_tenants = %v, want the count 2 and not the names", got)
+	}
+	if got := record["dmpf.config.grpc_client_key_file"].GetStringValue(); got != "set" {
+		t.Errorf("dmpf.config.grpc_client_key_file = %v, want set", got)
 	}
 }
 

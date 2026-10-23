@@ -7,11 +7,27 @@ resolve o tenant e autoriza por permissão; o papel `session-events` alimenta es
 deny-list com os eventos de sessão do Keycloak.
 
 Portado do `bff` de referência do platform (commit `ddd3d0c`) e podado dos
-contextos de lá. Especificação: `docs/specs/SPEC-DXAWGZ43-platform.md`.
+contextos de lá; a borda gRPC genérica voltou com o primeiro contexto, `tenancy`.
+Especificações: `docs/specs/SPEC-DXAWGZ43-platform.md` e
+`docs/specs/SPEC-XB4NCW4J-tenancy.md`.
 
 | Rota | Contrato | Exige | Permissão |
 | --- | --- | --- | --- |
 | `GET /v1/me` | `contract/openapi/v1/openapi.yaml` | sujeito e tenant | `profile` |
+| `POST /tenancy/store` | `apps/backend/tenancy/contract/openapi/v1/openapi.yaml` | sujeito, tenant e `Idempotency-Key` | `tenancy:write` |
+| `GET /tenancy/store?status=` | idem | sujeito e tenant | `tenancy:read` |
+| `GET /tenancy/store/{ref}` | idem | sujeito e tenant | `tenancy:read` |
+| `POST /tenancy/store/{ref}/suspend` | idem | sujeito, tenant e `Idempotency-Key` | `tenancy:write` |
+| `POST /tenancy/store/{ref}/reactivate` | idem | sujeito, tenant e `Idempotency-Key` | `tenancy:write` |
+
+As rotas de `tenancy` chamam o `TenancyService` por gRPC (`TENANCY_GRPC_TARGET`,
+obrigatória) com transporte declarado: `GRPC_INSECURE=true` só em desenvolvimento,
+ou mTLS por `GRPC_CA_FILE`, `GRPC_CLIENT_CERT_FILE` e `GRPC_CLIENT_KEY_FILE`. O
+erro gRPC vira HTTP por `rpc.Classify` (404, 400, 403, 409, 429, 503, 504), a
+rejeição de domínio vira `422` com o código do contexto, e o replay de
+idempotência responde com `Idempotent-Replayed`. O contrato do contexto é servido
+em `GET /openapi/tenancy/v1/openapi.yaml` quando `OPENAPI_TENANCY_PATH` está
+definido.
 
 `GET /v1/me` devolve `200` com `{"subject": "<sub>", "tenant": "<tenant_id>"}`
 lidos do contexto de execução que o `authn` montou. Recusas, com o corpo
@@ -30,8 +46,8 @@ sem declarar permissão faz o processo sair com código 2.
 
 Na porta de administração (`ADMIN_ADDR`), fora do contrato e sem autenticação:
 `GET /livez` responde `204` enquanto o processo serve; `GET /readyz` responde
-`204` enquanto serve e `503` depois do `SIGTERM`, durante o dreno. Sem contexto
-ainda, o `/readyz` não sonda gRPC. O subcomando `bff healthcheck` consulta o
+`204` enquanto serve e `503` depois do `SIGTERM`, durante o dreno, e também sonda
+o health gRPC de cada contexto (hoje, `tenancy`). O subcomando `bff healthcheck` consulta o
 `/readyz` e é o `HEALTHCHECK` da imagem.
 
 ## Papel `session-events`
@@ -117,12 +133,12 @@ renderiza os dois.
 
 ## Notas
 
-- O kernel `grpc` é importado só pelo middleware (identificador de correlação e
-  validação de locale), não para chamar contextos.
+- O kernel `grpc` é importado pelo middleware (identificador de correlação e
+  validação de locale) e pelo `app/rpc`, que disca os contextos.
 - A PDB usa `maxUnavailable: 1`: com uma réplica, `minAvailable: 1` impediria
   qualquer eviction e travaria o `kubectl drain`.
-- `app/rpc` contém só o `doc.go`: o `context-check` do DMPF exige o pacote em toda
-  borda, e os clientes gRPC chegam com cada contexto, a partir de `tenancy`.
-- Enquanto não houver bounded context, o `gate-check` do `dmpf-ci.yml` reprova por
-  falta de provider de contexto, e o `context-check` não chega à fase de bordas
-  (ADR-012).
+- `app/rpc` traz a borda gRPC genérica do molde (discagem, metadata, replay,
+  readiness, `Classify`) e um cliente por contexto; cada contexto novo acrescenta
+  o próprio cliente, as rotas e o alvo `<CTX>_GRPC_TARGET`.
+- O `gate-check` do DMPF só roda no job `self-tests` do `dmpf-ci.yml`, desligado
+  por padrão; rode-o localmente pelo script do plugin (ADR-012).

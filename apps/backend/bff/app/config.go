@@ -17,22 +17,44 @@ import (
 var (
 	ErrMissingVariable = errors.New("bff: required variable is not set")
 	ErrInvalidVariable = envconfig.ErrInvalidVariable
+
+	// ErrInsecureNotDeclared refuses a clear-text dial that no one asked for:
+	// without a CA file, GRPC_INSECURE has to say so explicitly.
+	ErrInsecureNotDeclared = errors.New("bff: no CA file and GRPC_INSECURE is not set")
 )
 
 const (
-	envHTTPAddr      = "HTTP_ADDR"
-	envAdminAddr     = "ADMIN_ADDR"
-	envCORSOrigins   = "CORS_ORIGINS"
-	envMetricTenants = "METRIC_TENANTS"
-	envDrainDelay    = "DRAIN_DELAY"
-	envRedisURL      = "REDIS_URL"
+	envHTTPAddr            = "HTTP_ADDR"
+	envAdminAddr           = "ADMIN_ADDR"
+	envTenancyTarget       = "TENANCY_GRPC_TARGET"
+	envGRPCInsecure        = "GRPC_INSECURE"
+	envGRPCCAFile          = "GRPC_CA_FILE"
+	envGRPCServerName      = "GRPC_SERVER_NAME"
+	envGRPCClientCertFile  = "GRPC_CLIENT_CERT_FILE"
+	envGRPCClientKeyFile   = "GRPC_CLIENT_KEY_FILE"
+	envCORSOrigins         = "CORS_ORIGINS"
+	envMetricTenants       = "METRIC_TENANTS"
+	envTenancyContractPath = "OPENAPI_TENANCY_PATH"
+	envDrainDelay          = "DRAIN_DELAY"
+	envRedisURL            = "REDIS_URL"
 )
 
 type Config struct {
 	HTTPAddr  string
 	AdminAddr string
 
-	CORSOrigins []string
+	TenancyTarget string
+
+	// The transport policy of every gRPC client: mutual TLS through CAFile and
+	// the client pair, or the development opt-out GRPCInsecure (GRP-15).
+	GRPCInsecure   bool
+	CAFile         string
+	ServerName     string
+	ClientCertFile string
+	ClientKeyFile  string
+
+	CORSOrigins         []string
+	TenancyContractPath string
 
 	Signals boot.Signals
 
@@ -74,10 +96,19 @@ func FromEnv(lookup func(string) string) (Config, error) {
 
 	cfg.HTTPAddr = envconfig.OrDefault(lookup(envHTTPAddr), cfg.HTTPAddr)
 	cfg.AdminAddr = envconfig.OrDefault(lookup(envAdminAddr), cfg.AdminAddr)
+	cfg.TenancyTarget = lookup(envTenancyTarget)
+	cfg.CAFile = lookup(envGRPCCAFile)
+	cfg.ServerName = lookup(envGRPCServerName)
+	cfg.ClientCertFile = lookup(envGRPCClientCertFile)
+	cfg.ClientKeyFile = lookup(envGRPCClientKeyFile)
 	cfg.CORSOrigins = envconfig.SplitList(lookup(envCORSOrigins))
 	cfg.MetricTenants = envconfig.SplitList(lookup(envMetricTenants))
+	cfg.TenancyContractPath = lookup(envTenancyContractPath)
 
 	var err error
+	if cfg.GRPCInsecure, err = envconfig.ParseBool(envGRPCInsecure, lookup(envGRPCInsecure)); err != nil {
+		return Config{}, err
+	}
 	if cfg.Auth, err = authn.ReadEnv(lookup); err != nil {
 		return Config{}, err
 	}
@@ -101,9 +132,11 @@ func FromEnv(lookup func(string) string) (Config, error) {
 }
 
 // Validate refuses a start the edge could not serve: an address net.Listen
-// would refuse, the public and the administration routes on one port, a route
-// budget the deadline package refuses, no way of verifying identity, or no
-// deny-list to consult before accepting a token.
+// would refuse, the public and the administration routes on one port, a missing
+// context target, no transport policy (TLS through a trusted authority or the
+// explicit development opt-out, GRP-15), a route budget the deadline package
+// refuses, no way of verifying identity, or no deny-list to consult before
+// accepting a token.
 func (c Config) Validate() error {
 	for _, listen := range [][2]string{{envHTTPAddr, c.HTTPAddr}, {envAdminAddr, c.AdminAddr}} {
 		if _, _, err := net.SplitHostPort(listen[1]); err != nil {
@@ -112,6 +145,14 @@ func (c Config) Validate() error {
 	}
 	if c.HTTPAddr == c.AdminAddr && !ephemeral(c.HTTPAddr) {
 		return fmt.Errorf("%w: %s and %s share %q", ErrInvalidVariable, envHTTPAddr, envAdminAddr, c.HTTPAddr)
+	}
+	switch {
+	case c.TenancyTarget == "":
+		return fmt.Errorf("%w: %s", ErrMissingVariable, envTenancyTarget)
+	case !c.GRPCInsecure && c.CAFile == "":
+		return fmt.Errorf("%w: %s=true or %s", ErrMissingVariable, envGRPCInsecure, envGRPCCAFile)
+	case c.CAFile != "" && (c.ClientCertFile == "" || c.ClientKeyFile == ""):
+		return fmt.Errorf("%w: %s and %s", ErrMissingVariable, envGRPCClientCertFile, envGRPCClientKeyFile)
 	}
 	if err := c.RouteBudget.Validate(); err != nil {
 		return err

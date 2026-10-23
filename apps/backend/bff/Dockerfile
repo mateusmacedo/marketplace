@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # Imagem do bff: a única borda REST pública do marketplace, com os papéis api
-# (padrão) e session-events no mesmo binário.
+# (padrão) e session-events no mesmo binário; chama os contextos por gRPC e
+# serve o OpenAPI de cada um, copiado para a imagem.
 #
 # Build a partir da RAIZ do repositório — o go.work resolve os módulos do
 # workspace, e o kernel vem por versão do proxy Go, então o COPY leva só as apps:
@@ -24,6 +25,8 @@ RUN --mount=type=cache,target=/root/go/pkg/mod \
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/bff /bff
+COPY apps/backend/tenancy/contract/openapi /contracts/openapi/tenancy
+ENV OPENAPI_TENANCY_PATH=/contracts/openapi/tenancy/v1/openapi.yaml
 EXPOSE 8080
 HEALTHCHECK --interval=5s --timeout=4s --start-period=5s --retries=3 CMD ["/bff", "healthcheck"]
 ENTRYPOINT ["/bff"]

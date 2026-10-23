@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,16 +24,26 @@ func lookup(pairs ...string) func(string) string {
 
 const denyList = "redis://revocation:secret@127.0.0.1:1/0"
 
+// contexts is how every start of the api role reaches the contexts behind it:
+// their targets and the development opt-out of their channels.
+var contexts = []string{"TENANCY_GRPC_TARGET", "tenancy:9090", "GRPC_INSECURE", "true"}
+
+func withContexts(pairs ...string) func(string) string {
+	return lookup(append(slices.Clone(contexts), pairs...)...)
+}
+
 func TestRunRefusesToStartWithoutConfiguration(t *testing.T) {
 	cases := []struct {
 		name  string
 		env   func(string) string
 		named string
 	}{
-		{"identity", lookup("REDIS_URL", denyList), "AUTH_DEV_MOCK"},
-		{"deny-list", lookup("AUTH_DEV_MOCK", "true"), "REDIS_URL"},
-		{"public address", lookup("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList, "HTTP_ADDR", "8080"), "HTTP_ADDR"},
-		{"public and administration on one port", lookup("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList,
+		{"tenancy target", lookup("GRPC_INSECURE", "true", "AUTH_DEV_MOCK", "true", "REDIS_URL", denyList), "TENANCY_GRPC_TARGET"},
+		{"transport policy", lookup("TENANCY_GRPC_TARGET", "tenancy:9090", "AUTH_DEV_MOCK", "true", "REDIS_URL", denyList), "GRPC_CA_FILE"},
+		{"identity", withContexts("REDIS_URL", denyList), "AUTH_DEV_MOCK"},
+		{"deny-list", withContexts("AUTH_DEV_MOCK", "true"), "REDIS_URL"},
+		{"public address", withContexts("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList, "HTTP_ADDR", "8080"), "HTTP_ADDR"},
+		{"public and administration on one port", withContexts("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList,
 			"HTTP_ADDR", "127.0.0.1:9100", "ADMIN_ADDR", "127.0.0.1:9100"), "HTTP_ADDR"},
 	}
 	for _, tc := range cases {
@@ -63,7 +74,7 @@ func TestRunRefusesToStartARouteWithASubjectAndNoPermission(t *testing.T) {
 	}
 	var errOut bytes.Buffer
 
-	code := run(options{lookup: lookup("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList), routes: undeclared}, &errOut)
+	code := run(options{lookup: withContexts("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList), routes: undeclared}, &errOut)
 
 	if code != exitUsage {
 		t.Fatalf("run() = %d, want %d: the start is refused before serving (stderr %q)", code, exitUsage, errOut.String())
@@ -82,7 +93,7 @@ func TestTheRoutesTheEdgeServesPassTheStartValidation(t *testing.T) {
 		return append(routes, kernelhttp.Route{Name: "invalid"})
 	}
 
-	code := run(options{lookup: lookup("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList), routes: counted}, &errOut)
+	code := run(options{lookup: withContexts("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList), routes: counted}, &errOut)
 
 	if served == 0 {
 		t.Fatal("the edge serves no route, want GET /v1/me at least")
@@ -99,7 +110,7 @@ func TestHealthcheckAnswersOnlyHealthyOrUnhealthy(t *testing.T) {
 		return srv.Listener.Addr().String()
 	}
 	configured := func(addr string) func(string) string {
-		return lookup("AUTH_DEV_MOCK", "true", "ADMIN_ADDR", addr, "REDIS_URL", denyList)
+		return withContexts("AUTH_DEV_MOCK", "true", "ADMIN_ADDR", addr, "REDIS_URL", denyList)
 	}
 	cases := []struct {
 		name string

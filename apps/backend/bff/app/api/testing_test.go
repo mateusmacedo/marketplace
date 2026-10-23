@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mateusmacedo/dmpf/libs/backend/go/authn"
+	kernelgrpc "github.com/mateusmacedo/dmpf/libs/backend/go/grpc"
 	obsclock "github.com/mateusmacedo/dmpf/libs/backend/go/observability/clock"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/logging"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/metrics"
@@ -22,17 +24,156 @@ import (
 	"github.com/mateusmacedo/dmpf/libs/backend/go/ports"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/transport/admission"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/transport/deadline"
+	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/api"
+	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc"
+	tenancyv1 "github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract/gen/go/company/tenancy/service/v1"
 )
 
 var routeBudget = deadline.Budget{Dependency: "edge", Method: "route", Limit: 2 * time.Second, Slack: 200 * time.Millisecond, EstimatedDuration: 100 * time.Millisecond}
 
+type received struct {
+	method      string
+	request     proto.Message
+	md          metadata.MD
+	deadline    time.Time
+	hasDeadline bool
+	at          time.Time
+}
+
+// fakeContexts serves the generated TenancyService over bufconn: each method
+// answers its fallback unless the test declares a response, and every call is
+// recorded with its metadata and deadline.
+type fakeContexts struct {
+	mu      sync.Mutex
+	calls   []received
+	respond map[string]func(n int) (any, error)
+	replays map[string]bool
+}
+
+func (f *fakeContexts) replay(methods ...string) *fakeContexts {
+	if f.replays == nil {
+		f.replays = map[string]bool{}
+	}
+	for _, method := range methods {
+		f.replays[method] = true
+	}
+	return f
+}
+
+func (f *fakeContexts) on(method string, respond func(n int) (any, error)) *fakeContexts {
+	if f.respond == nil {
+		f.respond = map[string]func(int) (any, error){}
+	}
+	f.respond[method] = respond
+	return f
+}
+
+func (f *fakeContexts) record(ctx context.Context, method string, req proto.Message) int {
+	md, _ := metadata.FromIncomingContext(ctx)
+	d, ok := ctx.Deadline()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, received{method, req, md.Copy(), d, ok, time.Now()})
+	n := 0
+	for _, c := range f.calls {
+		if c.method == method {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *fakeContexts) callsTo(method string) []received {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []received
+	for _, c := range f.calls {
+		if c.method == method {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (f *fakeContexts) total() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+var tenancyService = tenancyv1.File_company_tenancy_service_v1_tenancy_service_proto.Services().ByName("TenancyService")
+
+func unary[Req any, PReq interface {
+	*Req
+	proto.Message
+}](f *fakeContexts, service protoreflect.ServiceDescriptor, name protoreflect.Name, fallback proto.Message) grpc.MethodDesc {
+	method := string(name)
+	return kernelgrpc.Unary[any, Req, PReq, proto.Message](string(service.FullName()), kernelgrpc.Method(service, name),
+		func(_ any, ctx context.Context, req PReq) (proto.Message, error) {
+			n := f.record(ctx, method, req)
+			if f.replays[method] {
+				_ = grpc.SetHeader(ctx, metadata.Pairs(kernelgrpc.ReplayedHeader, "true"))
+			}
+			if respond, declared := f.respond[method]; declared {
+				resp, err := respond(n)
+				msg, _ := resp.(proto.Message)
+				return msg, err
+			}
+			return fallback, nil
+		})
+}
+
+const (
+	storeRegisteredAt = 1_755_432_000_000_000_000
+	storeChangedAt    = 1_755_518_400_000_000_000
+)
+
+func (f *fakeContexts) serve(t *testing.T) func(context.Context, string) (net.Conn, error) {
+	t.Helper()
+	srv := grpc.NewServer()
+	srv.RegisterService(&grpc.ServiceDesc{
+		ServiceName: rpc.TenancyServiceName,
+		HandlerType: (*any)(nil),
+		Methods: []grpc.MethodDesc{
+			unary[tenancyv1.RegisterStoreRequest](f, tenancyService, "RegisterStore", &tenancyv1.RegisterStoreResponse{Result: &tenancyv1.RegisterStoreResponse_Registered{Registered: &tenancyv1.Registered{Ref: "loja-1"}}}),
+			unary[tenancyv1.SuspendStoreRequest](f, tenancyService, "SuspendStore", &tenancyv1.SuspendStoreResponse{Result: &tenancyv1.SuspendStoreResponse_Suspended{Suspended: &tenancyv1.Suspended{Ref: "loja-1"}}}),
+			unary[tenancyv1.ReactivateStoreRequest](f, tenancyService, "ReactivateStore", &tenancyv1.ReactivateStoreResponse{Result: &tenancyv1.ReactivateStoreResponse_Reactivated{Reactivated: &tenancyv1.Reactivated{Ref: "loja-1"}}}),
+			unary[tenancyv1.FindStoreRequest](f, tenancyService, "FindStore", &tenancyv1.FindStoreResponse{Store: &tenancyv1.Store{
+				Ref: "loja-1", Name: "Loja 1", Status: tenancyv1.StoreStatus_STORE_STATUS_ACTIVE, RegisteredAt: storeRegisteredAt, StatusChangedAt: storeRegisteredAt,
+			}}),
+			unary[tenancyv1.FindStoresByStatusRequest](f, tenancyService, "FindStoresByStatus", &tenancyv1.FindStoresByStatusResponse{Stores: []*tenancyv1.Store{{
+				Ref: "loja-1", Name: "Loja 1", Status: tenancyv1.StoreStatus_STORE_STATUS_SUSPENDED, SuspensionReason: "fraude", RegisteredAt: storeRegisteredAt, StatusChangedAt: storeChangedAt,
+			}}}),
+		},
+	}, f)
+	h := health.NewServer()
+	h.SetServingStatus(rpc.TenancyServiceName, healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(srv, h)
+
+	listener := bufconn.Listen(1 << 20)
+	go func() { _ = srv.Serve(listener) }()
+	t.Cleanup(func() {
+		srv.Stop()
+		_ = listener.Close()
+	})
+	return func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }
+}
+
 type fixture struct {
+	fake        *fakeContexts
 	handler     http.Handler
 	admin       http.Handler
 	spans       *tracetest.InMemoryExporter
@@ -67,16 +208,28 @@ func (r *logRecorder) all() []sdklog.Record {
 }
 
 type setup struct {
-	budget        deadline.Budget
-	limit         admission.Limit
-	cors          []string
-	ready         func(context.Context) error
-	authenticator ports.Authenticator
-	draining      func() bool
-	clock         obsclock.Clock
+	fake            *fakeContexts
+	budget          deadline.Budget
+	limit           admission.Limit
+	tenancyContract []byte
+	cors            []string
+	ready           func(context.Context) error
+	authenticator   ports.Authenticator
+	draining        func() bool
+	clock           obsclock.Clock
 }
 
 type option func(*setup)
+
+// withContexts declares how the contexts behind the edge answer; without it
+// every method answers its success.
+func withContexts(fake *fakeContexts) option { return func(s *setup) { s.fake = fake } }
+
+func withBudget(b deadline.Budget) option { return func(s *setup) { s.budget = b } }
+
+func withTenancyContract(document string) option {
+	return func(s *setup) { s.tenancyContract = []byte(document) }
+}
 
 func withLimit(l admission.Limit) option { return func(s *setup) { s.limit = l } }
 
@@ -92,7 +245,7 @@ func withClock(c obsclock.Clock) option { return func(s *setup) { s.clock = c } 
 
 func newFixture(t *testing.T, options ...option) fixture {
 	t.Helper()
-	cfg := &setup{budget: routeBudget, limit: admission.Limit{PerSecond: 1000, Burst: 1000, Concurrency: 100}, authenticator: authn.DevAuthenticator{}}
+	cfg := &setup{fake: &fakeContexts{}, budget: routeBudget, limit: admission.Limit{PerSecond: 1000, Burst: 1000, Concurrency: 100}, authenticator: authn.DevAuthenticator{}}
 	for _, apply := range options {
 		apply(cfg)
 	}
@@ -101,6 +254,7 @@ func newFixture(t *testing.T, options ...option) fixture {
 	spans := tracetest.NewInMemoryExporter()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(otelboot.NewPrivacyExporter(spans)))
 	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	tracer := provider.Tracer("bff")
 
 	records := &logRecorder{}
 	logProvider := otelboot.NewLoggerProvider(otelboot.Config{}, records)
@@ -113,6 +267,13 @@ func newFixture(t *testing.T, options ...option) fixture {
 		logging.NewLogger(logProvider, "github.com/mateusmacedo/marketplace/apps/backend/bff/app/api").Handler(),
 	))
 
+	opts := rpc.Options{Insecure: true, Clock: obsclock.System(), Tracer: tracer, TracerProvider: provider, Propagator: propagation.TraceContext{}}
+	tenancyConn, err := rpc.Dial("passthrough:///tenancy", rpc.TenancyConfig(opts), grpc.WithContextDialer(cfg.fake.serve(t)))
+	if err != nil {
+		t.Fatalf("Dial(tenancy) = %v", err)
+	}
+	t.Cleanup(func() { _ = tenancyConn.Close() })
+
 	tenants, err := metrics.DeclareTenants(testTenant)
 	if err != nil {
 		t.Fatalf("DeclareTenants() = %v", err)
@@ -123,28 +284,29 @@ func newFixture(t *testing.T, options ...option) fixture {
 	}
 
 	handlerOptions := api.Options{
-		Budget:         cfg.budget,
-		Authenticator:  cfg.authenticator,
-		CORSOrigins:    cfg.cors,
-		Logger:         logger,
-		TracerProvider: provider,
-		MeterProvider:  meterProvider,
-		Ready:          cfg.ready,
-		Draining:       cfg.draining,
-		Clock:          cfg.clock,
+		Budget:          cfg.budget,
+		Authenticator:   cfg.authenticator,
+		TenancyContract: cfg.tenancyContract,
+		CORSOrigins:     cfg.cors,
+		Logger:          logger,
+		TracerProvider:  provider,
+		MeterProvider:   meterProvider,
+		Ready:           cfg.ready,
+		Draining:        cfg.draining,
+		Clock:           cfg.clock,
 	}
-	handler, err := api.NewHandler(ctrl, nil, handlerOptions)
+	handler, err := api.NewHandler(rpc.NewTenancy(tenancyConn), ctrl, nil, handlerOptions)
 	if err != nil {
 		t.Fatalf("NewHandler() = %v", err)
 	}
-	return fixture{handler: handler, admin: api.NewAdminHandler(handlerOptions), spans: spans, logs: logs, records: records, logProvider: logProvider, metrics: reader}
+	return fixture{fake: cfg.fake, handler: handler, admin: api.NewAdminHandler(handlerOptions), spans: spans, logs: logs, records: records, logProvider: logProvider, metrics: reader}
 }
 
 // testCredential is what the development authenticator reads back as identity.
 // The edge demands a subject on every route, so a request without it is denied
 // before reaching a handler — which is what the 401 cases assert by passing an
 // empty Authorization explicitly.
-const testCredential = `Bearer {"sub":"tester","tenant":"acme","permissions":["profile"]}`
+const testCredential = `Bearer {"sub":"tester","tenant":"acme","permissions":["profile","tenancy:write","tenancy:read"]}`
 
 // testTenant is the tenant testCredential resolves, declared so its bucket and
 // label are its own (MET-07).
@@ -179,6 +341,15 @@ func serve(handler http.Handler, method, path string, body io.Reader, headers ..
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
+}
+
+func (f fixture) post(t *testing.T, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	return f.do(t, http.MethodPost, path, reader, "Idempotency-Key", "k-1", "Content-Type", "application/json")
 }
 
 func decode(t *testing.T, rec *httptest.ResponseRecorder, into any) {

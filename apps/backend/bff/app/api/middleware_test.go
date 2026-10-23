@@ -105,8 +105,8 @@ func TestCORSAnswersThePreflightOfDeclaredOrigins(t *testing.T) {
 			t.Fatalf("Access-Control-Allow-Headers = %q, want %s", rec.Header().Get("Access-Control-Allow-Headers"), header)
 		}
 	}
-	if got := rec.Header().Get("Access-Control-Expose-Headers"); got != api.CorrelationHeader {
-		t.Fatalf("Access-Control-Expose-Headers = %q, want %s", got, api.CorrelationHeader)
+	if got, want := rec.Header().Get("Access-Control-Expose-Headers"), api.CorrelationHeader+", "+api.ReplayedHeader; got != want {
+		t.Fatalf("Access-Control-Expose-Headers = %q, want %s", got, want)
 	}
 
 	other := f.do(t, http.MethodOptions, mePath, nil, "Origin", "http://evil.example")
