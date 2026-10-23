@@ -17,15 +17,15 @@ efeito observável e o diagnóstico normativo, não apenas exercitar um helper.
 
 O código no disco é a autoridade. Antes de escrever ou revisar um teste:
 
-1. Leia `https://github.com/mateusmacedo/dmpf/blob/5def4d2d749bf8d5b2ef683f3cdc97eadf354c26/libs/backend/go/testkit/README.md` e o `doc.go` do package escolhido.
+1. Leia `https://github.com/mateusmacedo/dmpf/blob/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/libs/backend/go/testkit/README.md` e o `doc.go` do package escolhido.
 2. Inspecione as declarações exportadas e pelo menos um uso real em `*_test.go`.
 3. Procure consumidores fora do módulo para entender a adaptação do candidato.
 
 Use buscas focadas, por exemplo:
 
 ```bash
-rg -n '^(type|func|const|var) [A-Z]' https://github.com/mateusmacedo/dmpf/blob/5def4d2d749bf8d5b2ef683f3cdc97eadf354c26/libs/backend/go/testkit/<package> --glob '*.go' --glob '!**/*_test.go'
-rg -n 'testkit/<package>' https://github.com/mateusmacedo/dmpf/blob/5def4d2d749bf8d5b2ef683f3cdc97eadf354c26/libs/backend/go --glob '*_test.go'
+rg -n '^(type|func|const|var) [A-Z]' https://github.com/mateusmacedo/dmpf/blob/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/libs/backend/go/testkit/<package> --glob '*.go' --glob '!**/*_test.go'
+rg -n 'testkit/<package>' https://github.com/mateusmacedo/dmpf/blob/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/libs/backend/go --glob '*_test.go'
 ```
 
 Consulte [references/package-routing.md](references/package-routing.md) para
@@ -43,6 +43,11 @@ escolher o package e localizar os exemplos canônicos.
 - O `serviceskit` observa posições no ledger. Estado e outbox ficam entre o
   mesmo `begin` e `commit`; `publish` direto pelo service é defeito. A ordem
   dos passos de um caso de uso se afirma por `Steps`, não por um gravador local.
+- O parceiro de um comando externo é `serviceskit.Partner`, um fake do
+  `serviceskit` (`KIT-12`), e não um sexto kit. A conformidade do adaptador e
+  do ledger de tentativas é cláusula do `providerkit` (`ExternalCommand`,
+  `AttemptLedger`). Não escreva um fake local de `ExternalCommand` quando o
+  `Partner` cobre o roteiro.
 - Cada execução de `providerkit` deve receber um candidato limpo. Mantenha
   `Skipped` explícito para cláusulas impossíveis de injetar; não o trate como
   aprovação silenciosa.
@@ -57,10 +62,16 @@ escolher o package e localizar os exemplos canônicos.
 - Use `distkit` somente quando broker, redelivery e isolamento entre processos
   forem parte do comportamento. Duas goroutines não substituem os processos OS
   do vetor distribuído, e o controle ingênuo deve reprovar com `DMPF-R004`.
-- `appkit` e `distkit` não são packages do `testkit`: são harnesses do contexto
-  `reservations`, em `https://github.com/mateusmacedo/dmpf/blob/5def4d2d749bf8d5b2ef683f3cdc97eadf354c26/apps/backend/reservations/{appkit,distkit}` (ADR-046). O
-  kit em `https://github.com/mateusmacedo/dmpf/blob/5def4d2d749bf8d5b2ef683f3cdc97eadf354c26/libs/backend/go/testkit` guarda só o que qualquer contexto importa —
+- `appkit` e `distkit` não são packages do `testkit`: são harnesses de cada
+  contexto, como `https://github.com/mateusmacedo/dmpf/blob/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/apps/backend/reservations/{appkit,distkit}` (ADR-046). O que
+  os `distkit` têm em comum — supervisão de processos, harness por papel e
+  vetor do relay (`DMPF-P001` a `DMPF-P003`) — vive em `tb/dist`, e o `distkit`
+  do contexto fica só com o `Spec`, os papéis e o veredito próprio (ADR-062).
+  O kit em `https://github.com/mateusmacedo/dmpf/blob/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/libs/backend/go/testkit` guarda só o que qualquer contexto importa —
   uma suíte do kit nunca depende de um contexto de `apps/backend`.
+- Monte o `ExecutionContext` de teste por `tb/execctx`, e a telemetria de teste
+  (coletor OTLP, manifesto por papel, coletores de falha e leitores) por
+  `obstest`; não recrie fixture nem exportador local (ADR-062).
 - A fitness function reutiliza `DMPF-D001`, `DMPF-D002` e `DMPF-E001..E004` do
   `conformance`; não crie uma taxonomia paralela nem incorpore o trust model
   do baseline ao teste da suíte.
