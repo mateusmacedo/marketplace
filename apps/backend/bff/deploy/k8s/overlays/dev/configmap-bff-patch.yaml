@@ -4,6 +4,7 @@ metadata:
   name: bff
 data:
   # Sem servidor de autorização em dev: a identidade vem do próprio Bearer, sem
-  # verificação. Em hmg o BFF verifica por OIDC.
+  # verificação nem consulta à deny-list. Um ambiente com OIDC declara
+  # OIDC_ISSUER, OIDC_AUDIENCE e OIDC_TENANT_CLAIM no próprio overlay.
   AUTH_DEV_MOCK: 'true'
   OTEL_RESOURCE_ATTRIBUTES: service.version=dev,deployment.environment.name=dev
