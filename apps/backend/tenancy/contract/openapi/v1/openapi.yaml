@@ -203,9 +203,8 @@ components:
         Access token do servidor de autorização que o BFF verifica (OIDC). Os
         comandos exigem a permissão tenancy:write e as consultas tenancy:read,
         e o tenant resolvido precisa ser o operador; qualquer outro é recusado.
-        No compose local o BFF roda com AUTH_DEV_MOCK=true e lê a identidade do
-        próprio token, sem verificação — informe um JSON como
-        {"sub":"dev","tenant":"marketplace","permissions":["tenancy:write","tenancy:read"]}.
+        No ambiente local, o token do operador vem do Keycloak do compose:
+        `bash apps/backend/bff/scripts/operator-token.sh`.
   parameters:
     StoreRef:
       name: ref
