@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package company.tenancy.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A store was registered in the tenancy bounded context; `ref` is the tenant
+// the store is. Envelope type: com.company.tenancy.store-registered.v1 (PTB-03).
+message StoreRegistered {
+  string ref = 1;
+  string name = 2;
+  google.protobuf.Timestamp registered_at = 3;
+}

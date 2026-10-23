@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package company.tenancy.service.v1;
+
+// Internal synchronous surface of the tenancy bounded context (GRP-01). A
+// domain refusal travels as `rejection` in the response; a technical failure is
+// a gRPC status.
+service TenancyService {
+  rpc RegisterStore(RegisterStoreRequest) returns (RegisterStoreResponse);
+  rpc SuspendStore(SuspendStoreRequest) returns (SuspendStoreResponse);
+  rpc ReactivateStore(ReactivateStoreRequest) returns (ReactivateStoreResponse);
+  rpc FindStore(FindStoreRequest) returns (FindStoreResponse);
+  rpc FindStoresByStatus(FindStoresByStatusRequest) returns (FindStoresByStatusResponse);
+}
+
+message RegisterStoreRequest {
+  string ref = 1;
+  string name = 2;
+}
+
+message RegisterStoreResponse {
+  oneof result {
+    Registered registered = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Registered {
+  string ref = 1;
+}
+
+message SuspendStoreRequest {
+  string ref = 1;
+  string reason = 2;
+}
+
+message SuspendStoreResponse {
+  oneof result {
+    Suspended suspended = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Suspended {
+  string ref = 1;
+}
+
+message ReactivateStoreRequest {
+  string ref = 1;
+}
+
+message ReactivateStoreResponse {
+  oneof result {
+    Reactivated reactivated = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Reactivated {
+  string ref = 1;
+}
+
+message FindStoreRequest {
+  string ref = 1;
+}
+
+message FindStoreResponse {
+  Store store = 1;
+}
+
+message FindStoresByStatusRequest {
+  StoreStatus status = 1;
+}
+
+message FindStoresByStatusResponse {
+  repeated Store stores = 1;
+}
+
+message Store {
+  string ref = 1;
+  string name = 2;
+  StoreStatus status = 3;
+  // Empty while the store is active.
+  string suspension_reason = 4;
+  // Nanoseconds since the Unix epoch, the domain's instant.
+  int64 registered_at = 5;
+  // Nanoseconds since the Unix epoch of the last transition.
+  int64 status_changed_at = 6;
+}
+
+enum StoreStatus {
+  STORE_STATUS_UNSPECIFIED = 0;
+  STORE_STATUS_ACTIVE = 1;
+  STORE_STATUS_SUSPENDED = 2;
+}
+
+message Rejection {
+  string code = 1;
+  string message = 2;
+}
