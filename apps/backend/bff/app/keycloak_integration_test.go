@@ -170,6 +170,20 @@ func TestKeycloakTokenIsRefusedOnceTheDenyListStops(t *testing.T) {
 		t.Fatalf("GET /v1/me with the deny-list stopped = %d %s, want 401: the edge fails closed", status, body)
 	}
 	e.stop(t)
+
+	records := e.records(t)
+	unavailable := recordNamed(t, records, "auth: revocation store unavailable")
+	if scope := unavailable.InstrumentationScope().Name; scope != "github.com/mateusmacedo/dmpf/libs/backend/go/authn" {
+		t.Fatalf("refusal scope = %q, want the authn that could not consult the deny-list", scope)
+	}
+	if got := attributesOf(unavailable)["error.type"].AsString(); got != "TransientDependency" {
+		t.Fatalf("refusal error.type = %q, want TransientDependency: the deny-list, not the token, refused", got)
+	}
+	for _, record := range records {
+		if record.Body().AsString() == "auth: token rejected" {
+			t.Fatalf("token rejected with %v, want the token itself accepted and only the deny-list unavailable", attributesOf(record))
+		}
+	}
 }
 
 // tcpProxy stands between the edge and the test Redis, so a test can stop the

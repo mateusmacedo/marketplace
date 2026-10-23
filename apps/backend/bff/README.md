@@ -20,7 +20,8 @@ lidos do contexto de execução que o `authn` montou. Recusas, com o corpo
 - token ausente, inválido, expirado ou de sessão revogada → `401`;
 - token sem organização, ou com mais de uma → `403 tenant-unresolved`;
 - token sem a permissão `profile` (claims `scope` e `realm_access.roles`) → `403 permission-denied`;
-- `X-Tenant-ID`, `X-Subject-ID` ou query `tenant_id` divergente do token → `403 identity-mismatch`.
+- `X-Tenant-ID`, `X-Subject-ID` ou query `tenant_id` divergente do token → `403 identity-mismatch`;
+- header `Idempotency-Key` presente e fora do padrão do kernel → `400 invalid-idempotency-key`.
 
 Toda rota passa por `Route.ValidateEdge()` na partida: uma rota que exige sujeito
 sem declarar permissão faz o processo sair com código 2.

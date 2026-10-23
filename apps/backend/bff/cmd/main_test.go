@@ -31,6 +31,9 @@ func TestRunRefusesToStartWithoutConfiguration(t *testing.T) {
 	}{
 		{"identity", lookup("REDIS_URL", denyList), "AUTH_DEV_MOCK"},
 		{"deny-list", lookup("AUTH_DEV_MOCK", "true"), "REDIS_URL"},
+		{"public address", lookup("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList, "HTTP_ADDR", "8080"), "HTTP_ADDR"},
+		{"public and administration on one port", lookup("AUTH_DEV_MOCK", "true", "REDIS_URL", denyList,
+			"HTTP_ADDR", "127.0.0.1:9100", "ADMIN_ADDR", "127.0.0.1:9100"), "HTTP_ADDR"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
