@@ -1,14 +1,14 @@
 {
   "schema": "dmpf/workspace@1",
-  "modulePrefix": "example.com/change-me",
+  "modulePrefix": "github.com/mateusmacedo/marketplace",
   "npmScope": "@mateusmacedo",
   "appsDir": "apps/backend",
-  "edge": "",
+  "edge": "bff",
   "spiffeTrustDomain": "dmpf",
   "composeProfile": "dmpf",
-  "composeProject": "nx-base-template",
-  "imageRegistry": "registry.example.com/change-me",
-  "bufModule": "buf.build/change-me",
+  "composeProject": "marketplace",
+  "imageRegistry": "ghcr.io/mateusmacedo",
+  "bufModule": "buf.build/mateusmacedo",
   "tooling": {
     "mode": "version"
   }
