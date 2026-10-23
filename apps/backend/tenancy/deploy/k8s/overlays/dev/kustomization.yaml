@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/mateusmacedo/tenancy
+    newTag: dev
+
+secretGenerator:
+  - name: tenancy
+    literals:
+      - PG_DSN=postgres://tenancy:tenancy-dev@postgres-0.postgres:5432/tenancy?sslmode=disable
+      - KAFKA_BROKERS=redpanda-0.redpanda:9092
+    options:
+      disableNameSuffixHash: true
+  - name: tenancy-migrator
+    literals:
+      - PG_MIGRATE_DSN=postgres://tenancy_migrator:tenancy-migrator-dev@postgres-0.postgres:5432/tenancy?sslmode=disable
+    options:
+      disableNameSuffixHash: true
+
+patches:
+  - path: configmap-tenancy-patch.yaml
+  - path: deployment-tenancy-api-patch.yaml

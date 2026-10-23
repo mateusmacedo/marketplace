@@ -1,0 +1,54 @@
+# Processos do tenancy na topologia local (ADR-044): api gRPC, que aplica o
+# schema (MIGRATE=true), e relay da própria outbox.
+x-image: &image
+  build:
+    context: ../../../..
+    dockerfile: apps/backend/tenancy/Dockerfile
+  image: ${TENANCY_IMAGE:-tenancy:local}
+
+x-env: &env
+  OTEL_SERVICE_NAME: tenancy
+  PG_DSN: postgres://tenancy:${TENANCY_PG_PASSWORD:-tenancy-local}@postgres:5432/tenancy?sslmode=disable
+
+services:
+  dmpf-tenancy-api:
+    <<: *image
+    extends:
+      file: ../../../../infra/local/compose/app-base.yml
+      service: dmpf-grpc-api
+    stop_grace_period: 30s
+    environment:
+      <<: *env
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.version=local,deployment.environment.name=local},service.instance.id=tenancy-api,dmpf.process.role=api
+      PG_MIGRATE_DSN: postgres://tenancy_migrator:${TENANCY_PG_MIGRATOR_PASSWORD:-tenancy-migrator-local}@postgres:5432/tenancy?sslmode=disable
+      GRPC_TLS_CERT_FILE: /pki/dmpf-tenancy-api.crt
+      GRPC_TLS_KEY_FILE: /pki/dmpf-tenancy-api.key
+      TENANCY_OPERATOR_TENANT: ${TENANCY_OPERATOR_TENANT:-marketplace}
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      postgres-init:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+
+  dmpf-tenancy-relay:
+    <<: *image
+    extends:
+      file: ../../../../infra/local/compose/app-base.yml
+      service: dmpf-kafka-worker
+    stop_grace_period: 30s
+    command: ['--role', 'relay']
+    environment:
+      <<: *env
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.version=local,deployment.environment.name=local},service.instance.id=tenancy-relay,dmpf.process.role=relay
+      KAFKA_SASL_USERNAME: tenancy
+      KAFKA_SASL_PASSWORD: ${KAFKA_TENANCY_PASSWORD:-tenancy-local}
+      KAFKA_GROUP: tenancy
+      KAFKA_TENANCY_TOPIC: ${KAFKA_TENANCY_TOPIC:-tenancy.events}
+      KAFKA_TENANCY_DLQ: ${KAFKA_TENANCY_DLQ:-tenancy.events.dlq}
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      dmpf-tenancy-api:
+        condition: service_started

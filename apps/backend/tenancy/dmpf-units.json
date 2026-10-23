@@ -1,0 +1,73 @@
+{
+  "schema": "dmpf/units@1",
+  "units": [
+    {
+      "id": "tenancy/domain",
+      "block": "domain",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/tenancy/domain"]
+    },
+    {
+      "id": "tenancy/ports",
+      "block": "port",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/tenancy/ports"]
+    },
+    {
+      "id": "tenancy/application",
+      "block": "application",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/tenancy/application"]
+    },
+    {
+      "id": "tenancy/provider-postgres",
+      "block": "provider",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/tenancy/provider"]
+    },
+    {
+      "id": "tenancy/app",
+      "block": "app",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/app",
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/app/rpc",
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/cmd"
+      ]
+    },
+    {
+      "id": "tenancy/appkit",
+      "block": "app",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/tenancy/appkit"]
+    },
+    {
+      "id": "tenancy/distkit",
+      "block": "app",
+      "bounded_context": "tenancy",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/tenancy/distkit"]
+    }
+  ],
+  "external": [
+    {
+      "package": "github.com/jackc/pgx/v5",
+      "versions": ">=5.10 <6",
+      "entrypoints": [".", "github.com/jackc/pgx/v5/pgxpool", "github.com/jackc/pgx/v5/pgconn"],
+      "capability": "io.storage"
+    },
+    {
+      "package": "google.golang.org/protobuf",
+      "versions": ">=1.36.12 <2",
+      "entrypoints": ["google.golang.org/protobuf/proto"],
+      "capability": "wire.codec"
+    }
+  ],
+  "exceptions": []
+}
