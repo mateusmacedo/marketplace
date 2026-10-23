@@ -1,6 +1,6 @@
 {
   "schema": "dmpf/units-baseline@1",
-  "digest": "sha256:fd1cf51a219d17e3ff959675074e53944eb9fb73d57aa3cc3f6fe3a45c4cc08f",
+  "digest": "sha256:59719410171d2f9e3e6ea561a761ef55270ee640d994e146e9bb28ecdcbc8c4b",
   "entries": [
     {
       "unit": "bff/app",
@@ -12,6 +12,82 @@
         "github.com/mateusmacedo/marketplace/apps/backend/bff/app/api",
         "github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc",
         "github.com/mateusmacedo/marketplace/apps/backend/bff/cmd"
+      ]
+    },
+    {
+      "unit": "tenancy/app",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "app",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/app",
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/app/rpc",
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/cmd"
+      ]
+    },
+    {
+      "unit": "tenancy/appkit",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "app",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/appkit"
+      ]
+    },
+    {
+      "unit": "tenancy/application",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "application",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/application"
+      ]
+    },
+    {
+      "unit": "tenancy/distkit",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "app",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/distkit"
+      ]
+    },
+    {
+      "unit": "tenancy/domain",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "domain",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/domain"
+      ]
+    },
+    {
+      "unit": "tenancy/ports",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "port",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/ports"
+      ]
+    },
+    {
+      "unit": "tenancy/provider-postgres",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy",
+      "block": "provider",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/provider"
+      ]
+    },
+    {
+      "unit": "tenancy/contract",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract",
+      "block": "contract",
+      "bounded_context": "tenancy",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract",
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract/gen/go/company/tenancy/event/v1",
+        "github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract/gen/go/company/tenancy/service/v1"
       ]
     }
   ],
