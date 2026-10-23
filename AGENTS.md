@@ -93,14 +93,14 @@ Ao mover arquivos ou pastas, verifique todos os imports afetados — inclusive o
 
 ## Visão geral e estrutura
 
-`nx-base-template` (workspace npm `@nx-base-template/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011), mas **não contém apps** — quem parte deste template cria as suas.
+`marketplace` (workspace npm `@marketplace/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011), mas **não contém apps** — quem parte deste template cria as suas.
 
 Fonte de verdade dos projetos: `pnpm nx show projects`.
 
 ### Diretórios principais
 
 ```text
-nx-base-template/
+marketplace/
 ├── apps/
 │   ├── backend/                    # placeholder — sem projeto Nx
 │   ├── frontend/                   # placeholder — sem projeto Nx
@@ -154,7 +154,7 @@ O prefixo dos pacotes é `@mateusmacedo/`, tudo em minúsculas. No GitHub Packag
 
 ## Comandos
 
-Sempre via `pnpm nx` — nunca o `nx` global. O root `@nx-base-template/source` tem targets `nx:noop`; exclua-o de operações em lote com `--exclude=@nx-base-template/source` (como no `lefthook` / CI).
+Sempre via `pnpm nx` — nunca o `nx` global. O root `@marketplace/source` tem targets `nx:noop`; exclua-o de operações em lote com `--exclude=@marketplace/source` (como no `lefthook` / CI).
 
 ```bash
 # Em lote (todos os projetos com o target)
@@ -197,13 +197,13 @@ Scripts raiz (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm fo
 - **Lint + format:** **Biome 2.4.16** é a ferramenta principal de format/lint. Estilo: 2 espaços, `lineWidth` 100, aspas simples, trailing commas `all`, semicolons sempre, arrow parens sempre. Regras notáveis: `noUnusedVariables: error`, `noExplicitAny: warn` e `useImportType: error` — neste workspace `import type` é obrigatório, não preferência. O parser tem `unsafeParameterDecoratorsEnabled: true` para suportar decorators de parâmetro do NestJS.
 - **Testes:** Jest 30 transpilado por **SWC** (`@swc/jest`), config em `.spec.swcrc` (decorators + `keepClassNames` para DI do NestJS). O preset em `jest.preset.js` usa `passWithNoTests: true`, então projeto sem teste não quebra o lote.
 - **TypeScript:** `strict: true`, `module`/`moduleResolution: nodenext`, `target: es2022`, Project References (`composite: true`, `emitDeclarationOnly: true`). O `tsconfig.base.json` tem `paths` vazio e o `tsconfig.json` tem `references` vazio: cada lib nova acrescenta a própria entrada nos dois.
-- **Git hooks:** Lefthook (não husky), instalado via `pnpm prepare`. O script é tolerante a falha (`lefthook install || true`), para não quebrar `pnpm install` em ambiente sem o binário. `pre-commit` roda `biome check --write` nos arquivos staged; `pre-push` roda `nx affected` de lint/typecheck/test/build com `--parallel=3`, excluindo `@nx-base-template/source`.
+- **Git hooks:** Lefthook (não husky), instalado via `pnpm prepare`. O script é tolerante a falha (`lefthook install || true`), para não quebrar `pnpm install` em ambiente sem o binário. `pre-commit` roda `biome check --write` nos arquivos staged; `pre-push` roda `nx affected` de lint/typecheck/test/build com `--parallel=3`, excluindo `@marketplace/source`.
 
 ---
 
 ## Convenções obrigatórias
 
-- **Tags 3D em todo app/lib de produção:** uma de cada dimensão, conforme a taxonomia canônica abaixo. Ex.: `["type:lib", "scope:shared", "stack:node"]`. O publish npm do Nx Release cobre só projetos `type:lib` fora de Go (`tag:type:lib,!tag:stack:go`), organizados em grupos de release que nascem com o primeiro membro (ver "Release por grupos" em `docs/nx-reference/tasks.md`). Exceção conhecida: `@nx-base-template/source` (metadado raiz).
+- **Tags 3D em todo app/lib de produção:** uma de cada dimensão, conforme a taxonomia canônica abaixo. Ex.: `["type:lib", "scope:shared", "stack:node"]`. O publish npm do Nx Release cobre só projetos `type:lib` fora de Go (`tag:type:lib,!tag:stack:go`), organizados em grupos de release que nascem com o primeiro membro (ver "Release por grupos" em `docs/nx-reference/tasks.md`). Exceção conhecida: `@marketplace/source` (metadado raiz).
 
   | Dimensão | Valores válidos |
   | --- | --- |
@@ -284,7 +284,7 @@ Utilize Biome, typecheck, Jest e os hooks Lefthook configurados. O princípio �
 
 ```bash
 pnpm biome check --write .
-pnpm nx affected -t lint,typecheck,test,build --exclude=@nx-base-template/source
+pnpm nx affected -t lint,typecheck,test,build --exclude=@marketplace/source
 ```
 
 (Ajuste o conjunto de targets ao impacto da mudança.)

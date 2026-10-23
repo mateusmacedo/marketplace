@@ -1,5 +1,5 @@
 {
-  "name": "@nx-base-template/source",
+  "name": "@marketplace/source",
   "targets": {
     "lint": {
       "executor": "nx:noop"
