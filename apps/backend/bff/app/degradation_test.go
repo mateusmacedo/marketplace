@@ -43,12 +43,16 @@ func serveTenancy(t *testing.T) string {
 	return "dns:///" + listener.Addr().String()
 }
 
-// startEdgeExportingTo starts the edge over its own manifest, which resolves
-// identity with AUTH_DEV_MOCK: no request waits on the deny-list, so the only
-// I/O left on its path is the telemetry the collector refuses.
+// edgeEnvPath is the deploy manifest with identity by AUTH_DEV_MOCK, which only
+// test suites declare: the deploy manifest itself verifies against Keycloak.
+const edgeEnvPath = "testdata/edge.env"
+
+// startEdgeExportingTo starts the edge over edgeEnvPath, which resolves identity
+// with AUTH_DEV_MOCK: no request waits on the deny-list, so the only I/O left on
+// its path is the telemetry the collector refuses.
 func startEdgeExportingTo(t *testing.T, collector string) app.Config {
 	t.Helper()
-	env := maps.Clone(obstest.ReadEnvFile(t, manifestPath))
+	env := maps.Clone(obstest.ReadEnvFile(t, edgeEnvPath))
 	maps.Copy(env, map[string]string{
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://" + collector,
 		"OTEL_METRIC_EXPORT_INTERVAL": "10",
@@ -64,7 +68,7 @@ func startEdgeExportingTo(t *testing.T, collector string) app.Config {
 	obstest.UseOnlyTheOTelEnvironmentOf(t, env)
 	cfg, err := app.FromEnv(func(key string) string { return env[key] })
 	if err != nil {
-		t.Fatalf("FromEnv() over %s = %v", manifestPath, err)
+		t.Fatalf("FromEnv() over %s = %v", edgeEnvPath, err)
 	}
 
 	runtime, err := boot.StartTelemetry(context.Background(), app.TelemetryOf(cfg))

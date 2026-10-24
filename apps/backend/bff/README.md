@@ -69,7 +69,7 @@ administração, e o `/readyz` só cai para `503` no `SIGTERM`.
 | `OIDC_ISSUER` | api, session-events | issuer do Keycloak |
 | `OIDC_AUDIENCE` | api | audiência exigida no token |
 | `OIDC_TENANT_CLAIM` | api | claim do tenant (`organization.*.tenant_id`) |
-| `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, nas suítes de teste e no `serve` no host; exclusivo com `OIDC_ISSUER` |
+| `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, só nas suítes de teste; exclusivo com `OIDC_ISSUER` |
 | `REDIS_URL` | api, session-events | deny-list de revogação (usuário ACL restrito a `~dmpf:revocation:*`) |
 | `OIDC_REVOCATION_TIMEOUT_MS` | api | prazo da consulta à deny-list; estouro recusa o token |
 | `OIDC_REVOCATION_TTL_SECONDS` | session-events | validade de cada entrada da deny-list |
@@ -80,21 +80,19 @@ administração, e o `/readyz` só cai para `503` no `SIGTERM`.
 
 Configuração inválida faz a partida sair com código 2; descoberta OIDC sem
 resposta, com código 1. Os valores de desenvolvimento estão em
-`deploy/.env.example` (API com `AUTH_DEV_MOCK`) e
+`deploy/.env.example` (API em OIDC contra o Keycloak do compose) e
 `deploy/.env.session-events.example`; os `.env` copiados deles ficam fora do git.
-O `deploy/.env.example` é também o manifesto que as suítes de `app/` leem
-(`telemetry_manifest_test.go`, `degradation_test.go`), por isso segue com o mock;
-para o `serve` em OIDC, troque no `deploy/.env` o `AUTH_DEV_MOCK` por
-`OIDC_ISSUER`, `OIDC_AUDIENCE` e `OIDC_TENANT_CLAIM` com os valores do compose.
+O `deploy/.env.example` é também o manifesto de telemetria que o
+`telemetry_manifest_test.go` confere; o `degradation_test.go` lê o próprio
+`app/testdata/edge.env`, a mesma configuração com o `AUTH_DEV_MOCK`.
 
 ## Rodar localmente
 
 ```bash
 pnpm nx run bff:deploy-env         # copia deploy/.env.example para deploy/.env
 pnpm nx run bff:redis-up           # Redis do compose local
-pnpm nx run bff:serve              # API em 127.0.0.1:8080, admin em 127.0.0.1:8090
-
 pnpm nx run bff:keycloak-up        # Keycloak do compose e o seed do operador
+pnpm nx run bff:serve              # API em 127.0.0.1:8080, admin em 127.0.0.1:8090
 pnpm nx run bff:serve-session-events
 ```
 
@@ -111,8 +109,8 @@ descoberta OIDC e reinicia. `dmpf-bff-session-events` e `bff-keycloak-seed` sobe
 só no profile `keycloak`. Só a porta pública da API é publicada, em
 `127.0.0.1:${HTTP_PORT:-8080}`; as portas de administração e o
 `/backchannel-logout` ficam na rede interna do compose. No compose e no overlay
-`dev`, a API roda em OIDC e a revogação vale; o `AUTH_DEV_MOCK` fica nas suítes de
-teste e no `serve` no host com o `deploy/.env.example`.
+`dev`, como no `serve` no host, a API roda em OIDC e a revogação vale; o
+`AUTH_DEV_MOCK` fica só nas suítes de teste.
 
 ## Operador e token de desenvolvimento
 
