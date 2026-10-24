@@ -14,8 +14,8 @@ contextos de lá. Especificação: `docs/specs/SPEC-DXAWGZ43-platform.md`.
 | `GET /v1/me` | `contract/openapi/v1/openapi.yaml` | sujeito e tenant | `profile` |
 
 `GET /v1/me` devolve `200` com `{"subject": "<sub>", "tenant": "<tenant_id>"}`
-lidos do contexto de execução que o `authn` montou. Recusas, no formato de erro do
-kernel `http`:
+lidos do contexto de execução que o `authn` montou. Recusas, com o corpo
+`{"code", "message"}` do próprio `bff` (`app/api/handlers.go`):
 
 - token ausente, inválido, expirado ou de sessão revogada → `401`;
 - token sem organização, ou com mais de uma → `403 tenant-unresolved`;
@@ -49,9 +49,10 @@ administração, e o `/readyz` só cai para `503` no `SIGTERM`.
 | `HTTP_ADDR` | api | porta pública |
 | `ADMIN_ADDR` | api, session-events | `/livez` e `/readyz` |
 | `SESSION_EVENTS_ADDR` | session-events | `POST /backchannel-logout` |
-| `OIDC_ISSUER`, `OIDC_AUDIENCE` | api, session-events | verificador OIDC do `authn` |
+| `OIDC_ISSUER` | api, session-events | issuer do Keycloak |
+| `OIDC_AUDIENCE` | api | audiência exigida no token |
 | `OIDC_TENANT_CLAIM` | api | claim do tenant (`organization.*.tenant_id`) |
-| `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, só em desenvolvimento; exclusivo com `OIDC_ISSUER` |
+| `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, só em desenvolvimento; exclusivo com `OIDC_ISSUER` |
 | `REDIS_URL` | api, session-events | deny-list de revogação (usuário ACL restrito a `~dmpf:revocation:*`) |
 | `OIDC_REVOCATION_TIMEOUT_MS` | api | prazo da consulta à deny-list; estouro recusa o token |
 | `OIDC_REVOCATION_TTL_SECONDS` | session-events | validade de cada entrada da deny-list |
@@ -78,7 +79,11 @@ pnpm nx run bff:serve-session-events
 
 No compose, o `deploy/compose.yml` entra pela semente `infra/local/docker-compose.yml`:
 `dmpf-bff` sobe nos profiles do DMPF e `dmpf-bff-session-events` só no profile
-`keycloak`, porque depende dele. Todas as portas são publicadas em `127.0.0.1`.
+`keycloak`, porque depende dele. Só a porta pública da API é publicada, em
+`127.0.0.1:${HTTP_PORT:-8080}`; as portas de administração e o
+`/backchannel-logout` ficam na rede interna do compose. No compose e no overlay
+`dev`, a API roda com `AUTH_DEV_MOCK`; a revogação só vale com OIDC, como no
+`serve` com o `OIDC_ISSUER` configurado e no `test-keycloak`.
 
 ## Targets Nx
 
@@ -113,6 +118,8 @@ renderiza os dois.
 
 - O kernel `grpc` é importado só pelo middleware (identificador de correlação e
   validação de locale), não para chamar contextos.
+- A PDB usa `maxUnavailable: 1`: com uma réplica, `minAvailable: 1` impediria
+  qualquer eviction e travaria o `kubectl drain`.
 - `app/rpc` contém só o `doc.go`: o `context-check` do DMPF exige o pacote em toda
   borda, e os clientes gRPC chegam com cada contexto, a partir de `tenancy`.
 - Enquanto não houver bounded context, o `gate-check` do `dmpf-ci.yml` reprova por
