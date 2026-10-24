@@ -106,6 +106,15 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "operator-token": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bash scripts/operator-token.sh",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["keycloak-up"]
+    },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
@@ -116,6 +125,7 @@
       "continuous": true,
       "dependsOn": [
         "redis-up",
+        "keycloak-up",
         {
           "projects": ["tenancy"],
           "target": "serve-api"

@@ -91,8 +91,8 @@ O `deploy/.env.example` é também o manifesto de telemetria que o
 ```bash
 pnpm nx run bff:deploy-env         # copia deploy/.env.example para deploy/.env
 pnpm nx run bff:redis-up           # Redis do compose local
-pnpm nx run bff:keycloak-up        # Keycloak do compose e o seed do operador
-pnpm nx run bff:serve              # API em 127.0.0.1:8080, admin em 127.0.0.1:8090
+pnpm nx run bff:serve              # sobe Redis, Keycloak e seed (keycloak-up) e o tenancy; API em 127.0.0.1:8080, admin em 127.0.0.1:8090
+pnpm nx run bff:operator-token     # token do operador para o Swagger e o curl
 pnpm nx run bff:serve-session-events
 ```
 
@@ -137,7 +137,8 @@ O password grant dispensa navegador, mas entrega a senha ao client; por isso o
 navegador segue com o `dmpf-portal` (PKCE).
 
 ```bash
-bash apps/backend/bff/scripts/operator-token.sh   # imprime só o access token
+pnpm nx run bff:operator-token                    # sobe Keycloak e seed (keycloak-up) e imprime o token
+bash apps/backend/bff/scripts/operator-token.sh   # imprime só o access token, com o Keycloak já no ar
 ```
 
 O script usa `curl` e `jq` e lê `KEYCLOAK_URL` (padrão
@@ -155,7 +156,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/me
 
 `tidy`, `fmt-check`, `vet`, `build`, `test-race`, `test-infra-up`,
 `test-infra-down`, `test-keycloak`, `govulncheck`, `serve`,
-`serve-session-events`, `deploy-env`, `redis-up`, `keycloak-up`,
+`serve-session-events`, `deploy-env`, `redis-up`, `keycloak-up`, `operator-token`,
 `docker:build`, `docker:run` e `k8s-render`. `lint`, `test` e `generate` vêm do
 `@nx-go/nx-go`. O `bff` não entra na release: ela cobre só libs e apps fora de Go.
 
