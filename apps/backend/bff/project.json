@@ -102,7 +102,7 @@
     "keycloak-up": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose -f infra/local/docker-compose.yml --profile keycloak up -d --wait keycloak",
+        "command": "docker compose -f infra/local/docker-compose.yml --profile keycloak up -d --wait keycloak && docker compose -f infra/local/docker-compose.yml --profile keycloak run --rm bff-keycloak-seed",
         "cwd": "{workspaceRoot}"
       }
     },
