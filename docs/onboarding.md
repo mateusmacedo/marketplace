@@ -207,7 +207,7 @@ versionado o conhecimento que precisa sobreviver ao plano antes de descartá-lo.
 ## Sincronização com o tracker
 
 O trabalho deste repositório é rastreado no Linear, no projeto
-[nx-base-template](https://linear.app/mmda/project/nx-base-template-db3f16eab767)
+[Marketplace](https://linear.app/mmda/project/marketplace-93d4e0c7bfef)
 (time DevTeam, chave `DEVS`). Projetos derivados escolhem o próprio tracker.
 
 - **Uma spec, uma issue**, com o título `[SPEC-<id>] <título da spec>`. A spec

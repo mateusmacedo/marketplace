@@ -2,7 +2,7 @@
 id: SPEC-DXAWGZ43
 slug: platform
 title: Plataforma do marketplace — workspace DMPF e borda
-stage: building
+stage: done
 priority: P0
 depends_on: []
 ticket_url: https://linear.app/mmda/issue/DEVS-143/spec-dxawgz43-plataforma-do-marketplace-workspace-dmpf-e-borda
@@ -70,58 +70,58 @@ expor rotas autenticadas por tenant sem montar infraestrutura à mão.
 
 ### Funcionais
 
-- [ ] **[P0] Upgrade do plugin para `1.0.0-rc.7`**: rodar `pnpm nx migrate @mateusmacedo/dmpf-plugin@1.0.0-rc.7`, `pnpm install` e `pnpm nx migrate --run-migrations` (migrations `sync-init` e `update-versions`).
+- [x] **[P0] Upgrade do plugin para `1.0.0-rc.7`**: rodar `pnpm nx migrate @mateusmacedo/dmpf-plugin@1.0.0-rc.7`, `pnpm install` e `pnpm nx migrate --run-migrations` (migrations `sync-init` e `update-versions`).
   - O `catalog:` do `pnpm-workspace.yaml` passa a fixar `1.0.0-rc.7`, e o `minimumReleaseAgeExclude` passa a citar `@mateusmacedo/dmpf-plugin@1.0.0-rc.7` no lugar da rc.3. Se o `nx migrate` não trocar a entrada do `minimumReleaseAgeExclude`, ela é trocada à mão (o `pnpm-workspace.yaml` não é gerenciado).
   - O `go.work` passa à diretiva `go 1.26.10`, e o `@nx-go/nx-go`, à `4.0.0` (`versions.json` da rc.7).
   - O `.github/workflows/dmpf-ci.yml` passa a chamar o reutilizável no SHA `ddd3d0c4202879f168c7f6bfafaefadd94a3a621`, com `plugin-version: 1.0.0-rc.7`.
   - Se uma migration recusar um arquivo editado à mão, parar e reportar. Proibido usar `--force` sem aprovação.
   - O `migrations.json` gerado pelo `nx migrate` sai via `trash` depois das migrations.
-- [ ] **[P0] `init` com a identidade do repositório**: rodar `pnpm nx g @mateusmacedo/dmpf-plugin:init --modulePrefix=github.com/mateusmacedo/marketplace --composeProject=marketplace --edge=bff --no-interactive`.
+- [x] **[P0] `init` com a identidade do repositório**: rodar `pnpm nx g @mateusmacedo/dmpf-plugin:init --modulePrefix=github.com/mateusmacedo/marketplace --composeProject=marketplace --edge=bff --no-interactive`.
   - Valores esperados no `dmpf.json`: `modulePrefix` `github.com/mateusmacedo/marketplace`, `composeProject` `marketplace`, `imageRegistry` `ghcr.io/mateusmacedo`, `bufModule` `buf.build/mateusmacedo`, `edge` `bff`. `spiffeTrustDomain` e `composeProfile` ficam em `dmpf`, e `npmScope`, em `@mateusmacedo`.
   - O `imageRegistry` e o `bufModule` vêm do default derivado do prefixo `github.com/<owner>`. Se o `init` não os derivar sobre o valor `change-me` atual, passar `--imageRegistry=ghcr.io/mateusmacedo --bufModule=buf.build/mateusmacedo`.
   - Uma segunda execução com as mesmas opções NÃO pode alterar nenhum arquivo: o `sha256sum` de todos os arquivos do workspace (fora de `node_modules`, `.git` e `.nx`) é idêntico antes e depois dela.
-- [ ] **[P0] Semente do compose local**: em `infra/local/docker-compose.yml`, trocar `name: nx-base-template-local` por `name: marketplace-local` e acrescentar `compose/keycloak.yml` à lista `include:`, que a semente atual não tem e o `init` não reescreve.
-- [ ] **[P0] Renomear o pacote raiz**: trocar `@nx-base-template/source` por `@marketplace/source` e as demais menções vivas a `nx-base-template` por `marketplace` nestes arquivos: `package.json`, `project.json`, `lefthook.yml`, `.github/workflows/ci.yml`, `.github/workflows/nx-release.yml`, `.github/workflows/nx-publish-libs.yml`, `.github/workflows/publish-libs.yaml`, `.github/PULL_REQUEST_TEMPLATE.md`, `AGENTS.md`, `README.md`, `docs/onboarding.md`, `docs/guides/development-workflow.md` e `docs/guides/primeiro-bounded-context.md`.
+- [x] **[P0] Semente do compose local**: em `infra/local/docker-compose.yml`, trocar `name: nx-base-template-local` por `name: marketplace-local` e acrescentar `compose/keycloak.yml` à lista `include:`, que a semente atual não tem e o `init` não reescreve.
+- [x] **[P0] Renomear o pacote raiz**: trocar `@nx-base-template/source` por `@marketplace/source` e as demais menções vivas a `nx-base-template` por `marketplace` nestes arquivos: `package.json`, `project.json`, `lefthook.yml`, `.github/workflows/ci.yml`, `.github/workflows/nx-release.yml`, `.github/workflows/nx-publish-libs.yml`, `.github/workflows/publish-libs.yaml`, `.github/PULL_REQUEST_TEMPLATE.md`, `AGENTS.md`, `README.md`, `docs/onboarding.md`, `docs/guides/development-workflow.md` e `docs/guides/primeiro-bounded-context.md`.
   - `pnpm install` regenera o `pnpm-lock.yaml`.
   - Ao fim, `git grep -n "nx-base-template"` só pode retornar arquivos em `docs/specs/` com `stage: done` e em `docs/adr/` anteriores a esta spec.
-- [ ] **[P0] Remover o smoke do template**: enviar `tools/template-smoke.sh` para a lixeira (`trash`) e remover o job `template-smoke` de `.github/workflows/ci.yml` e as menções em `AGENTS.md`, `README.md`, `docs/adr/README.md`, `docs/ci-cd/README.md` e `docs/guides/primeiro-bounded-context.md`.
-- [ ] **[P0] App `bff` — papel `api`**: criar `apps/backend/bff` como módulo Go `github.com/mateusmacedo/marketplace/apps/backend/bff`, com binário `bff` (`cmd/main.go`).
+- [x] **[P0] Remover o smoke do template**: enviar `tools/template-smoke.sh` para a lixeira (`trash`) e remover o job `template-smoke` de `.github/workflows/ci.yml` e as menções em `AGENTS.md`, `README.md`, `docs/adr/README.md`, `docs/ci-cd/README.md` e `docs/guides/primeiro-bounded-context.md`.
+- [x] **[P0] App `bff` — papel `api`**: criar `apps/backend/bff` como módulo Go `github.com/mateusmacedo/marketplace/apps/backend/bff`, com binário `bff` (`cmd/main.go`).
   - A porta pública (`HTTP_ADDR`) serve só as rotas do contrato. A porta de administração (`ADMIN_ADDR`) serve `GET /livez` (204 enquanto o processo serve) e `GET /readyz` (204 enquanto serve, 503 após o `SIGTERM`), sem autenticação. Como ainda não há contexto, o `/readyz` não sonda gRPC.
   - O subcomando `bff healthcheck` consulta o `/readyz` e sai com 0 ou 1. Ele é o `HEALTHCHECK` da imagem.
   - Identidade: verificador OIDC do `authn` (`OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_TENANT_CLAIM=organization.*.tenant_id`) ou `AUTH_DEV_MOCK`, nunca os dois. Configuração inválida faz a partida falhar com exit 2. Se a descoberta OIDC não responder, a partida falha com exit 1.
   - Revogação: cada token aceito é consultado na deny-list do Redis (`REDIS_URL`, obrigatória). Sessão ou sujeito revogado devolve 401 com `dmpf.auth.refusal_reason` = `session_revoked`.
   - Toda rota é validada por `Route.ValidateEdge()` na partida. Uma rota que exige sujeito sem permissão declarada impede o processo de subir.
-- [ ] **[P0] Rota `GET /v1/me`**: devolve `200` com `{"subject": "<sub>", "tenant": "<tenant_id>"}` lidos do contexto de execução resolvido.
+- [x] **[P0] Rota `GET /v1/me`**: devolve `200` com `{"subject": "<sub>", "tenant": "<tenant_id>"}` lidos do contexto de execução resolvido.
   - `Requires: RequireSubjectAndTenant`, `Permission: profile`, com o contrato em `apps/backend/bff/contract/openapi/v1/openapi.yaml`.
   - Recusas: token ausente, inválido ou expirado → 401 `unauthenticated`. Token sem organização, ou com mais de uma → 403 `tenant-unresolved`. Token sem o scope `profile` → 403 `permission-denied`. Header ou query de identidade divergente do token → 403 `identity-mismatch`.
   - O corpo de erro é o `{"code", "message"}` das recusas do `bff`, com o `code` vindo do motivo do kernel `http`.
-- [ ] **[P0] App `bff` — papel `session-events`**: subcomando `bff session-events`, processo à parte com uma réplica, com configuração própria (`deploy/.env.session-events.example`).
+- [x] **[P0] App `bff` — papel `session-events`**: subcomando `bff session-events`, processo à parte com uma réplica, com configuração própria (`deploy/.env.session-events.example`).
   - `POST /backchannel-logout` (`SESSION_EVENTS_ADDR`) recebe o back-channel logout do client `dmpf-portal`.
   - O polling dos admin events do Keycloak usa o client `dmpf-session-events`, a cada `OIDC_SESSION_EVENTS_INTERVAL_SECONDS`.
   - Os dois gravam na mesma deny-list que o papel `api` consulta.
   - `/livez` e `/readyz` ficam na própria porta de administração. O `/readyz` só cai para 503 no `SIGTERM`.
-- [ ] **[P0] Pacote `app/rpc` em esqueleto**: o `context-check` do DMPF exige `app/config.go`, `app/wiring.go`, `app/api`, `app/rpc` e `deploy/infra.json` em toda borda. O `app/rpc` nasce só com o `doc.go` do pacote, sem cliente gRPC; os clientes chegam com cada contexto.
-- [ ] **[P0] Manifesto e projeto Nx do `bff`**: `dmpf-units.json` com a unidade `bff/app` (`block` `app`, `bounded_context` `bff`, `public_integration_surface` `false`), incluindo os packages `app`, `app/api`, `app/rpc` e `cmd`.
+- [x] **[P0] Pacote `app/rpc` em esqueleto**: o `context-check` do DMPF exige `app/config.go`, `app/wiring.go`, `app/api`, `app/rpc` e `deploy/infra.json` em toda borda. O `app/rpc` nasce só com o `doc.go` do pacote, sem cliente gRPC; os clientes chegam com cada contexto.
+- [x] **[P0] Manifesto e projeto Nx do `bff`**: `dmpf-units.json` com a unidade `bff/app` (`block` `app`, `bounded_context` `bff`, `public_integration_surface` `false`), incluindo os packages `app`, `app/api`, `app/rpc` e `cmd`.
   - `project.json` com o nome `bff` e as tags `type:app`, `scope:backend`, `stack:go`, `layer:apps`.
   - Targets do `bff`: `fmt-check`, `vet`, `build`, `test-race`, `test-infra-up`, `test-infra-down`, `test-keycloak`, `govulncheck`, `serve`, `serve-session-events`, `docker:build`, `docker:run` e `k8s-render`, sem redeclarar o que um plugin ou os `targetDefaults` já fornecem (ADR-002).
   - O `test-keycloak` sobe o Keycloak de testes (`infra/test/compose.yml`, profile `keycloak`, `127.0.0.1:18180`) e o Redis de testes, aplica o seed, roda os testes com build tag `integration` e derruba os dois ao final, mesmo com falha.
   - Os metadados (`go.mod`, `package.json`, `project.json`, `dmpf-units.json`) e a entrada `use` no `go.work` entram já adaptados no primeiro passo do `bff`, antes de qualquer target Nx rodar.
   - O baseline de conformidade (`tools/dmpf-baseline/units-baseline.json`) é regenerado pelo `conformance --write-baseline`, e a entrada `bff/app` é revisada antes do `conformance` em modo de verificação.
-- [ ] **[P0] Deploy local do `bff`**: `deploy/.env.example`, `deploy/.env.session-events.example`, `deploy/compose.yml` (serviços `dmpf-bff` e `dmpf-bff-session-events`, estendendo `dmpf-http-edge` do `infra/local/compose/app-base.yml`), `deploy/infra.json` e o `Dockerfile`. O `deploy/compose.yml` entra no `include:` da semente.
+- [x] **[P0] Deploy local do `bff`**: `deploy/.env.example`, `deploy/.env.session-events.example`, `deploy/compose.yml` (serviços `dmpf-bff` e `dmpf-bff-session-events`, estendendo `dmpf-http-edge` do `infra/local/compose/app-base.yml`), `deploy/infra.json` e o `Dockerfile`. O `deploy/compose.yml` entra no `include:` da semente.
   - `dmpf-bff-session-events` fica só no profile `keycloak`, porque depende do Keycloak.
-- [ ] **[P1] Manifestos k8s do `bff`**: `deploy/k8s/base/` (Deployment, Service, ServiceAccount, ConfigMap, NetworkPolicy, PDB, o par do `session-events`) e `deploy/k8s/overlays/dev/`, renderizáveis pelo target `k8s-render`.
+- [x] **[P1] Manifestos k8s do `bff`**: `deploy/k8s/base/` (Deployment, Service, ServiceAccount, ConfigMap, NetworkPolicy, PDB, o par do `session-events`) e `deploy/k8s/overlays/dev/`, renderizáveis pelo target `k8s-render`.
   - Overlay `deploy/k8s/overlays/hmg/` mínimo (só a `kustomization.yaml` sobre a base): o `infrasync` gera `infra/k8s/overlays/{dev,hmg}/apps/kustomization.yaml` apontando para o overlay de mesmo nome de toda app, e sem ele a referência do `hmg` fica quebrada. Ajuste de ambiente `hmg` fica fora.
-- [ ] **[P1] Documentação**:
+- [x] **[P1] Documentação**:
   - Criar `docs/adr/012-borda-e-infra-alinhadas-ao-dmpf.md`, que supera as escolhas de `docs/product/` por Logto, Traefik, RabbitMQ e GraphQL, e indexá-la em `docs/adr/README.md`.
   - Atualizar a seção "Apps" do `AGENTS.md` (o `bff` deixa de ser placeholder), "Decisões de base" do `docs/roadmap.md` e o `README.md` do `bff`, com a tabela de rotas, a configuração e como rodar localmente.
 
 ### Não-funcionais
 
-- [ ] Segurança: consulta à deny-list com prazo `OIDC_REVOCATION_TIMEOUT_MS` de 250 ms (default do kernel). Estouro do prazo recusa o token.
-- [ ] Segurança: todas as portas do compose local publicadas só em `127.0.0.1`, como nos arquivos gerados. O usuário ACL do Redis da deny-list fica restrito a `~dmpf:revocation:*` (verificado por um smoke: escrita fora do prefixo recusada com `NOPERM`).
-- [ ] Desempenho: `GET /v1/me` com Redis local responde em menos de 50 ms no p95, medido em 100 requisições sequenciais com token válido.
-- [ ] Compatibilidade: Go na diretiva `1.26.10` do `go.work`, Node `^24` e `pnpm@11.14.0`.
-- [ ] Observabilidade: o papel `api` abre um span SERVER por requisição (pai no `traceparent`), menos `GET`/`HEAD` de `/livez` e `/readyz`, e exporta por OTLP para o collector do compose.
+- [x] Segurança: consulta à deny-list com prazo `OIDC_REVOCATION_TIMEOUT_MS` de 250 ms (default do kernel). Estouro do prazo recusa o token.
+- [x] Segurança: todas as portas do compose local publicadas só em `127.0.0.1`, como nos arquivos gerados. O usuário ACL do Redis da deny-list fica restrito a `~dmpf:revocation:*` (verificado por um smoke: escrita fora do prefixo recusada com `NOPERM`).
+- [x] Desempenho: `GET /v1/me` com Redis local responde em menos de 50 ms no p95, medido em 100 requisições sequenciais com token válido.
+- [x] Compatibilidade: Go na diretiva `1.26.10` do `go.work`, Node `^24` e `pnpm@11.14.0`.
+- [x] Observabilidade: o papel `api` abre um span SERVER por requisição (pai no `traceparent`), menos `GET`/`HEAD` de `/livez` e `/readyz`, e exporta por OTLP para o collector do compose.
 
 ## Camadas afetadas
 
@@ -246,21 +246,21 @@ handle(req):
 
 ### Critérios de aceite
 
-- [ ] `pnpm-workspace.yaml` fixa `@mateusmacedo/dmpf-plugin` em `1.0.0-rc.7` no catálogo e no `minimumReleaseAgeExclude`, sem nenhuma menção à rc.3; o `go.work` declara `go 1.26.10`; o `dmpf-ci.yml` usa o SHA `ddd3d0c4202879f168c7f6bfafaefadd94a3a621` e `plugin-version: 1.0.0-rc.7`.
-- [ ] `jq '{modulePrefix,composeProject,imageRegistry,bufModule,edge}' dmpf.json` devolve exatamente `github.com/mateusmacedo/marketplace`, `marketplace`, `ghcr.io/mateusmacedo`, `buf.build/mateusmacedo` e `bff`.
-- [ ] Reexecutar o `init` com as mesmas opções mantém idêntico o `sha256sum` de todos os arquivos do workspace.
-- [ ] `docker compose -f infra/local/docker-compose.yml --profile keycloak config` resolve sem erro, com `name: marketplace-local`.
-- [ ] `git grep -n "nx-base-template"` só retorna specs `done` e ADRs 001 a 011.
-- [ ] `tools/template-smoke.sh` não existe, e `ci.yml` não tem o job `template-smoke`.
-- [ ] `GET /v1/me` com token válido do usuário `alice` (seed) devolve 200 com o `subject` do token e o `tenant` da organização dela.
-- [ ] Sem token → 401; token sem organização → 403 `tenant-unresolved`; `X-Tenant-ID`, `X-Subject-ID` ou query `tenant_id` divergente → 403 `identity-mismatch`.
-- [ ] Depois do logout de `alice` no Keycloak, o mesmo token passa a receber 401 `session_revoked` em até `OIDC_SESSION_EVENTS_INTERVAL_SECONDS` + 1 s.
-- [ ] Com o Redis parado, um token válido recebe 401 (falha fechada).
-- [ ] Uma rota com sujeito e sem permissão declarada faz a partida falhar com exit 2 (teste unitário).
-- [ ] Gates do DMPF aplicáveis passam localmente: `conformance` (com o baseline regenerado), `modsync --check` e `infrasync --check`.
-- [ ] O `gate-check` reprova só pela ausência de provider de contexto, e o `context-check --phase structural` encerra sem contexto; nenhuma outra falha aparece nos dois.
-- [ ] `pnpm nx run bff:test-race`, `pnpm nx run bff:govulncheck`, `pnpm nx run bff:test-keycloak` e `pnpm nx run bff:k8s-render` passam, e `kubectl kustomize infra/k8s/overlays/{dev,hmg}/apps` resolve sem erro.
-- [ ] Validação do workspace passa: `pnpm biome ci .` e `pnpm nx affected -t lint,typecheck,test,build --exclude=@marketplace/source`.
+- [x] `pnpm-workspace.yaml` fixa `@mateusmacedo/dmpf-plugin` em `1.0.0-rc.7` no catálogo e no `minimumReleaseAgeExclude`, sem nenhuma menção à rc.3; o `go.work` declara `go 1.26.10`; o `dmpf-ci.yml` usa o SHA `ddd3d0c4202879f168c7f6bfafaefadd94a3a621` e `plugin-version: 1.0.0-rc.7`.
+- [x] `jq '{modulePrefix,composeProject,imageRegistry,bufModule,edge}' dmpf.json` devolve exatamente `github.com/mateusmacedo/marketplace`, `marketplace`, `ghcr.io/mateusmacedo`, `buf.build/mateusmacedo` e `bff`.
+- [x] Reexecutar o `init` com as mesmas opções mantém idêntico o `sha256sum` de todos os arquivos do workspace.
+- [x] `docker compose -f infra/local/docker-compose.yml --profile keycloak config` resolve sem erro, com `name: marketplace-local`.
+- [x] `git grep -n "nx-base-template"` só retorna specs `done` e ADRs 001 a 011.
+- [x] `tools/template-smoke.sh` não existe, e `ci.yml` não tem o job `template-smoke`.
+- [x] `GET /v1/me` com token válido do usuário `alice` (seed) devolve 200 com o `subject` do token e o `tenant` da organização dela.
+- [x] Sem token → 401; token sem organização → 403 `tenant-unresolved`; `X-Tenant-ID`, `X-Subject-ID` ou query `tenant_id` divergente → 403 `identity-mismatch`.
+- [x] Depois do logout de `alice` no Keycloak, o mesmo token passa a receber 401 `session_revoked` em até `OIDC_SESSION_EVENTS_INTERVAL_SECONDS` + 1 s.
+- [x] Com o Redis parado, um token válido recebe 401 (falha fechada).
+- [x] Uma rota com sujeito e sem permissão declarada faz a partida falhar com exit 2 (teste unitário).
+- [x] Gates do DMPF aplicáveis passam localmente: `conformance` (com o baseline regenerado), `modsync --check` e `infrasync --check`.
+- [x] O `gate-check` reprova só pela ausência de provider de contexto, e o `context-check --phase structural` encerra sem contexto; nenhuma outra falha aparece nos dois.
+- [x] `pnpm nx run bff:test-race`, `pnpm nx run bff:govulncheck`, `pnpm nx run bff:test-keycloak` e `pnpm nx run bff:k8s-render` passam, e `kubectl kustomize infra/k8s/overlays/{dev,hmg}/apps` resolve sem erro.
+- [x] Validação do workspace passa: `pnpm biome ci .` e `pnpm nx affected -t lint,typecheck,test,build --exclude=@marketplace/source`.
 - [ ] No PR, o `dmpf-ci.yml` só reprova no `gate-check`, pela ausência de provider de contexto; o `ci.yml` passa.
 
 ### Cenários de teste
