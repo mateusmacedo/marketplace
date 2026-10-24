@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
-      NX_EXCLUDE: "@nx-base-template/source,tag:stack:go"
+      NX_EXCLUDE: "@marketplace/source,tag:stack:go"
 
     steps:
       - name: Checkout

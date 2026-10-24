@@ -24,7 +24,7 @@ pnpm nx g @mateusmacedo/dmpf-plugin:init --modulePrefix=github.com/<org>/<repo> 
 ```
 
 O `init` reescreve os arquivos gerenciados que você não editou, mas não toca a semente
-`infra/local/docker-compose.yml`. Troque nela o `name: nx-base-template-local` por
+`infra/local/docker-compose.yml`. Troque nela o `name:` por
 `<repo>-local`.
 
 ## 2. Gerar o contexto

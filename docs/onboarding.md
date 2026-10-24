@@ -1,6 +1,6 @@
 # Onboarding
 
-Este guia leva um clone novo do `nx-base-template` até o primeiro PR.
+Este guia leva um clone novo do `marketplace` até o primeiro PR.
 
 Este repositório é um **template**: ele não traz apps prontas. O caminho normal é
 clonar, validar o ambiente e então gerar a primeira app ou lib do seu projeto.
@@ -70,7 +70,7 @@ Hoje isso retorna apenas o metadado raiz:
 
 | Projeto Nx | Caminho |
 | --- | --- |
-| `@nx-base-template/source` | raiz (metadado, sem código) |
+| `@marketplace/source` | raiz (metadado, sem código) |
 
 O template não traz apps nem libs — `apps/*` e `libs/*` são diretórios de
 destino. Os projetos aparecem aqui conforme você os cria.
@@ -135,7 +135,7 @@ pnpm nx affected -t test
 pnpm nx affected -t build
 ```
 
-O pre-push usa esse padrão e exclui `@nx-base-template/source`.
+O pre-push usa esse padrão e exclui `@marketplace/source`.
 
 ## Hooks locais
 
@@ -144,7 +144,7 @@ O `lefthook.yml` define:
 - Pre-commit: `pnpm biome check --write` nos arquivos staged compatíveis, com
   `stage_fixed: true`.
 - Pre-push: `pnpm nx affected -t lint`, `typecheck`, `test` e `build`, com
-  `--parallel=3` e `--exclude=@nx-base-template/source`.
+  `--parallel=3` e `--exclude=@marketplace/source`.
 
 Se um hook alterar arquivos no pre-commit, revise o diff antes de concluir o
 commit.

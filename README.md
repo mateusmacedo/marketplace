@@ -1,4 +1,4 @@
-# nx-base-template
+# marketplace
 
 Baseline de monorepo Nx multistack — Express, Fastify, NestJS, Next.js, Angular e
 bounded contexts Go do DMPF no mesmo workspace.
@@ -53,7 +53,7 @@ pnpm nx g @mateusmacedo/dmpf-plugin:init --modulePrefix=github.com/<org>/<repo> 
 ```
 
 O `init` não reescreve a semente `infra/local/docker-compose.yml`: troque à mão o
-`name: nx-base-template-local` dela por `<repo>-local`. Enquanto o prefixo for
+`name:` dela por `<repo>-local`. Enquanto o prefixo for
 `example.com/change-me`, o `bounded-context` recusa rodar e imprime o comando do passo 3.
 
 ```bash
@@ -100,7 +100,7 @@ pnpm nx migrate --run-migrations
 ## Estrutura de diretórios
 
 ```
-nx-base-template/
+marketplace/
 ├── apps/                        # Aplicações executáveis
 │   └── <stack>-<name>/
 │   └── <stack>-<name>-e2e/

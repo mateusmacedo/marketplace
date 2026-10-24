@@ -30,7 +30,7 @@ jobs:
       # valor concreto aborta com ERR_PNPM_BAD_PM_VERSION.
       pnpm_version: ""
       node_version: "24"
-      nx_exclude: "@nx-base-template/source"
+      nx_exclude: "@marketplace/source"
       scope: "@mateusmacedo"
       tag: ${{ inputs.tag || 'latest' }}
       build_projects_filter: "tag:type:lib,!tag:stack:go"

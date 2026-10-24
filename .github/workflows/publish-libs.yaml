@@ -14,7 +14,7 @@ on:
         type: string
         default: ""
       nx_exclude:
-        description: "Projetos a excluir do build/publish (ex: @nx-base-template/source)"
+        description: "Projetos a excluir do build/publish (ex: @marketplace/source)"
         required: false
         type: string
         default: ""
