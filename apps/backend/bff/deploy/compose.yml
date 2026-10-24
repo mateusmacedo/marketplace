@@ -1,6 +1,5 @@
-# O BFF é a única borda HTTP publicada no host (ADR-044 do platform). Enquanto
-# não há contexto, ele só autentica e resolve o tenant; os clientes gRPC com
-# mTLS entram com cada contexto, junto do pki-init e dos alvos. O papel
+# O BFF é a única borda HTTP publicada no host (ADR-044 do platform); fala gRPC
+# com mTLS com cada contexto e serve os OpenAPI embutidos na imagem. O papel
 # session-events depende do Keycloak e sobe só com o profile keycloak.
 x-image: &image
   build:
@@ -22,9 +21,15 @@ services:
       OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.version=local,deployment.environment.name=local},service.instance.id=bff,dmpf.process.role=api
       HTTP_ADDR: ':8080'
       ADMIN_ADDR: ':8090'
+      TENANCY_GRPC_TARGET: dns:///dmpf-tenancy-api:9090
       # Autenticador de desenvolvimento (IDN-01): lê a identidade declarada no
       # próprio Bearer; fora do compose a partida exige OIDC_ISSUER.
       AUTH_DEV_MOCK: 'true'
+      # Sem GRPC_SERVER_NAME: cada alvo é verificado pelo próprio host.
+      GRPC_CA_FILE: /pki/ca.crt
+      GRPC_CLIENT_CERT_FILE: /pki/bff-client.crt
+      GRPC_CLIENT_KEY_FILE: /pki/bff-client.key
+      OPENAPI_TENANCY_PATH: /contracts/openapi/tenancy/v1/openapi.yaml
       # Só o Swagger UI local chama o BFF de outro origin; fora do
       # desenvolvimento a variável fica vazia e a borda é same-origin.
       CORS_ORIGINS: http://localhost:${SWAGGER_PORT:-8082},http://127.0.0.1:${SWAGGER_PORT:-8082}
@@ -32,6 +37,10 @@ services:
     ports:
       - '127.0.0.1:${HTTP_PORT:-8080}:8080'
     depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      dmpf-tenancy-api:
+        condition: service_started
       redis:
         condition: service_healthy
       otel-collector:

@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: bff
 data:
+  # Os `api` dos contextos rodam sem TLS em dev.
+  GRPC_INSECURE: 'true'
   # Sem servidor de autorização em dev: a identidade vem do próprio Bearer, sem
   # verificação nem consulta à deny-list. Um ambiente com OIDC declara
   # OIDC_ISSUER, OIDC_AUDIENCE e OIDC_TENANT_CLAIM no próprio overlay.

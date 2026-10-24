@@ -1,11 +1,15 @@
-# Sem alvo gRPC enquanto não há contexto: cada contexto acrescenta o próprio
-# alvo (o Service do `api` dele) e a política de transporte quando chega.
+# Os contratos viajam na imagem e são servidos pelo BFF. Os alvos gRPC são os
+# Services dos `api` no mesmo namespace; o balanceamento por chamada vem do
+# resolver dns e do round_robin do cliente. A política de transporte é do
+# overlay (opt-out em dev, a CA do ambiente fora dele).
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: bff
 data:
   HTTP_ADDR: ':8080'
+  TENANCY_GRPC_TARGET: dns:///tenancy-api:9090
+  OPENAPI_TENANCY_PATH: /contracts/openapi/tenancy/v1/openapi.yaml
   OTEL_SERVICE_NAME: bff
   OTEL_EXPORTER_OTLP_PROTOCOL: grpc
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317

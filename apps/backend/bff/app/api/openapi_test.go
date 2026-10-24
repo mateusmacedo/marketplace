@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -16,11 +17,17 @@ type document struct {
 	Paths      map[string]map[string]operation `yaml:"paths"`
 	Components struct {
 		Parameters      map[string]parameter `yaml:"parameters"`
+		Responses       map[string]response  `yaml:"responses"`
 		SecuritySchemes map[string]struct {
 			Type   string `yaml:"type"`
 			Scheme string `yaml:"scheme"`
 		} `yaml:"securitySchemes"`
 	} `yaml:"components"`
+}
+
+type response struct {
+	Ref     string               `yaml:"$ref"`
+	Headers map[string]yaml.Node `yaml:"headers"`
 }
 
 type operation struct {
@@ -54,6 +61,18 @@ func loadDocument(t *testing.T, file string) document {
 	return doc
 }
 
+func (d document) response(t *testing.T, node yaml.Node) response {
+	t.Helper()
+	var r response
+	if err := node.Decode(&r); err != nil {
+		t.Fatalf("response is not an object: %v", err)
+	}
+	if name, ok := strings.CutPrefix(r.Ref, "#/components/responses/"); ok {
+		return d.Components.Responses[name]
+	}
+	return r
+}
+
 func (d document) resolve(p parameter) parameter {
 	if name, ok := strings.CutPrefix(p.Ref, "#/components/parameters/"); ok {
 		return d.Components.Parameters[name]
@@ -63,9 +82,17 @@ func (d document) resolve(p parameter) parameter {
 
 func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 	// WHY: every refusal the edge answers for an authenticated route is in the
-	// contract, so a generated client reads each one as Rejection.
+	// contract, so a generated client reads each one as Rejection. rpc.Classify
+	// maps NotFound and Aborted for every method, not per route, so every write
+	// declares both 404 and 409; a read never answers 409 because optimistic
+	// locking only rejects a write.
 	statuses := map[string][]string{
-		"me": {"200", "400", "401", "403", "429", "default"},
+		"me":                 {"200", "400", "401", "403", "429", "default"},
+		"registerStore":      {"201", "400", "404", "409", "422", "429", "503", "504", "default"},
+		"suspendStore":       {"200", "400", "404", "409", "422", "429", "503", "504", "default"},
+		"reactivateStore":    {"200", "400", "404", "409", "422", "429", "503", "504", "default"},
+		"findStore":          {"200", "400", "404", "429", "503", "504", "default"},
+		"findStoresByStatus": {"200", "400", "404", "429", "503", "504", "default"},
 	}
 	routes := api.Routes(routeBudget)
 	if len(routes) == 0 {
@@ -114,6 +141,15 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 			}
 			if key.Schema.Pattern != ports.IdempotencyKeyPattern || key.Schema.MaxLength != 128 {
 				t.Fatalf("%s: %s schema = %+v, want pattern %s and maxLength 128 (IDM-02)", route.Name, api.IdempotencyHeader, key.Schema, ports.IdempotencyKeyPattern)
+			}
+
+			if route.Method == http.MethodPost {
+				for code, node := range op.Responses {
+					answered := strings.HasPrefix(code, "2") || code == "422"
+					if _, marked := doc.response(t, node).Headers[api.ReplayedHeader]; answered && !marked {
+						t.Fatalf("%s: response %s does not declare %s (IDM-08)", route.Name, code, api.ReplayedHeader)
+					}
+				}
 			}
 
 			var got []string

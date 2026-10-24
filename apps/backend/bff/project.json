@@ -4,6 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/backend/bff",
   "tags": ["type:app", "scope:backend", "stack:go", "layer:apps"],
+  "implicitDependencies": ["tenancy"],
   "targets": {
     "tidy": {
       "executor": "@mateusmacedo/dmpf-plugin:go-tidy",
@@ -113,7 +114,17 @@
         "envFile": "{projectRoot}/deploy/.env.example"
       },
       "continuous": true,
-      "dependsOn": ["redis-up"]
+      "dependsOn": [
+        "redis-up",
+        {
+          "projects": ["tenancy"],
+          "target": "serve-api"
+        },
+        {
+          "projects": ["tenancy"],
+          "target": "serve-relay"
+        }
+      ]
     },
     "serve-session-events": {
       "executor": "nx:run-commands",
@@ -133,9 +144,27 @@
     },
     "docker:run": {
       "options": {
-        "args": ["--rm", "--name bff", "--network host", "--env-file deploy/.env"]
+        "args": [
+          "--rm",
+          "--name bff",
+          "--network host",
+          "--env-file deploy/.env",
+          "-e OPENAPI_TENANCY_PATH=/contracts/openapi/tenancy/v1/openapi.yaml"
+        ]
       },
-      "dependsOn": ["deploy-env", "docker:build", "redis-up"]
+      "dependsOn": [
+        "deploy-env",
+        "docker:build",
+        "redis-up",
+        {
+          "projects": ["tenancy"],
+          "target": "docker:run"
+        },
+        {
+          "projects": ["tenancy"],
+          "target": "docker:run-relay"
+        }
+      ]
     },
     "k8s-render": {
       "executor": "nx:run-commands",

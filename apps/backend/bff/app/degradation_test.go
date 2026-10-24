@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"net"
 	"net/http"
 	"strconv"
 	"testing"
@@ -11,14 +12,36 @@ import (
 
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/boot"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/testkit/obstest"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/mateusmacedo/marketplace/apps/backend/bff/app"
+	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc"
 )
 
 const (
 	requestLimit = 2 * time.Second
 	drainLimit   = 5 * time.Second
 )
+
+// serveTenancy stands for the tenancy context behind the edge: it answers
+// SERVING, which is all the readiness of the edge asks of it, and returns the
+// target the edge dials.
+func serveTenancy(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() = %v", err)
+	}
+	server := grpc.NewServer()
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus(rpc.TenancyServiceName, healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(server, healthServer)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	return "dns:///" + listener.Addr().String()
+}
 
 // startEdgeExportingTo starts the edge over its own manifest, which resolves
 // identity with AUTH_DEV_MOCK: no request waits on the deny-list, so the only
@@ -35,6 +58,8 @@ func startEdgeExportingTo(t *testing.T, collector string) app.Config {
 		"OTEL_BLRP_MAX_QUEUE_SIZE":    "8",
 		"HTTP_ADDR":                   obstest.UnusedLoopbackAddr(t),
 		"ADMIN_ADDR":                  obstest.UnusedLoopbackAddr(t),
+		"TENANCY_GRPC_TARGET":         serveTenancy(t),
+		"OPENAPI_TENANCY_PATH":        "",
 	})
 	obstest.UseOnlyTheOTelEnvironmentOf(t, env)
 	cfg, err := app.FromEnv(func(key string) string { return env[key] })

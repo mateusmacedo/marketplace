@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -18,6 +20,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc"
 )
 
 // withExecutionContext authenticates and mounts the nine-field context. It runs
@@ -38,14 +42,15 @@ func withExecutionContext(logger *slog.Logger, authenticator ports.Authenticator
 
 		w := newRecorder(rw)
 		clientKey := r.Header.Get(idempotencyHeaderOf(route))
-		defer func() { finishRequest(ctx, span, logger, route, r, w, clientKey) }()
+		derivedKey := ""
+		defer func() { finishRequest(ctx, span, logger, route, r, w, clientKey, derivedKey) }()
 		defer recordPanicStatus(w)
 
 		w.Header().Set(CorrelationHeader, correlation)
 
 		deadline, governed := r.Context().Deadline()
 		if !governed {
-			tracing.RecordError(span, categoryUnexpected)
+			tracing.RecordError(span, rpc.CategoryUnexpected)
 			writeInternal(w, r)
 			return
 		}
@@ -70,13 +75,24 @@ func withExecutionContext(logger *slog.Logger, authenticator ports.Authenticator
 			Locale:        localeOf(r),
 		})
 		if err != nil {
-			tracing.RecordError(span, categoryUnexpected)
+			tracing.RecordError(span, rpc.CategoryUnexpected)
 			writeInternal(w, r)
 			return
+		}
+		derivedKey = deriveIdempotencyKey(identity.Subject, clientKey)
+		call := rpc.Call{
+			CorrelationID:  correlation,
+			RequestID:      requestID,
+			IdempotencyKey: derivedKey,
+			Locale:         execution.Locale(),
+		}
+		if tenant, ok := execution.Tenant(); ok {
+			call.TenantID = string(tenant)
 		}
 		span.SetAttributes(tracing.ExecutionAttributes(execution).KeyValues()...)
 
 		ctx = tracing.WithExecutionBaggage(kernelhttp.WithExecutionContext(ctx, execution), execution)
+		ctx = rpc.WithReplaySlot(rpc.WithCall(ctx, call))
 		next.ServeHTTP(w, r.WithContext(kernelhttp.WithVerifiedPlatformReach(ctx, route)))
 	})
 }
@@ -117,25 +133,43 @@ func recordPanicStatus(w *statusRecorder) {
 	}
 }
 
-func finishRequest(ctx context.Context, span trace.Span, logger *slog.Logger, route kernelhttp.Route, r *http.Request, w *statusRecorder, clientKey string) {
+// deriveIdempotencyKey scopes the client's key to its subject, which CTX-12
+// keeps from crossing to the context: two callers never share an entry (IDM-03).
+func deriveIdempotencyKey(subject *ports.SubjectID, key string) string {
+	if key == "" {
+		return ""
+	}
+	var owner string
+	if subject != nil {
+		owner = string(*subject)
+	}
+	digest := sha256.Sum256([]byte(owner + "\x00" + key))
+	return hex.EncodeToString(digest[:])
+}
+
+func finishRequest(ctx context.Context, span trace.Span, logger *slog.Logger, route kernelhttp.Route, r *http.Request, w *statusRecorder, clientKey, derivedKey string) {
 	span.SetAttributes(tracing.Attributes{}.OutcomeCategory(string(outcomeOf(w.status))).KeyValues()...)
 
 	level, enabled := accessLevel(ctx, logger, w.status)
 	if !enabled {
 		return
 	}
-	logRequest(ctx, r, logger, level, route.Path, w.status, idempotencyAttrs(clientKey)...)
+	logRequest(ctx, r, logger, level, route.Path, w.status, idempotencyAttrs(clientKey, derivedKey)...)
 }
 
-func idempotencyAttrs(clientKey string) []slog.Attr {
+func idempotencyAttrs(clientKey, derivedKey string) []slog.Attr {
+	var attrs []slog.Attr
 	switch {
 	case clientKey == "":
-		return nil
 	case ports.ValidIdempotencyKey(clientKey):
-		return []slog.Attr{slog.String(tracing.KeyIdempotencyKey, clientKey)}
+		attrs = append(attrs, slog.String(tracing.KeyIdempotencyKey, clientKey))
 	default:
-		return []slog.Attr{slog.Bool(tracing.KeyIdempotencyKeyInvalid, true)}
+		attrs = append(attrs, slog.Bool(tracing.KeyIdempotencyKeyInvalid, true))
 	}
+	if derivedKey != "" {
+		attrs = append(attrs, slog.String(tracing.KeyIdempotencyKeyDerived, derivedKey))
+	}
+	return attrs
 }
 
 func accessLevel(ctx context.Context, logger *slog.Logger, status int) (slog.Level, bool) {
@@ -268,7 +302,7 @@ func withCORS(origins []string, next http.Handler) http.Handler {
 			return
 		}
 		header.Set("Access-Control-Allow-Origin", origin)
-		header.Set("Access-Control-Expose-Headers", CorrelationHeader)
+		header.Set("Access-Control-Expose-Headers", strings.Join([]string{CorrelationHeader, ReplayedHeader}, ", "))
 		if r.Method == http.MethodOptions {
 			header.Set("Access-Control-Allow-Methods", strings.Join([]string{http.MethodGet, http.MethodPost, http.MethodOptions}, ", "))
 			header.Set("Access-Control-Allow-Headers", strings.Join([]string{"Authorization", "Content-Type", IdempotencyHeader, CorrelationHeader}, ", "))
@@ -280,6 +314,15 @@ func withCORS(origins []string, next http.Handler) http.Handler {
 	})
 }
 
+func serveContract(document []byte) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(document)
+	})
+}
+
 // WHY: without this a panic reaches net/http, which closes the connection with
 // no HTTP answer at all and writes the stack to the default logger, bypassing
 // the redacting handler this process installs.
@@ -287,7 +330,7 @@ func withRecover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				tracing.RecordError(trace.SpanFromContext(r.Context()), categoryUnexpected)
+				tracing.RecordError(trace.SpanFromContext(r.Context()), rpc.CategoryUnexpected)
 				writeInternal(w, r)
 			}
 		}()

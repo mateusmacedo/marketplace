@@ -20,9 +20,18 @@ func lookup(pairs ...string) func(string) string {
 	return func(name string) string { return values[name] }
 }
 
+// targets are the contexts the edge dials, and transport the development
+// opt-out of their channels (GRP-15).
+var (
+	targets   = []string{"TENANCY_GRPC_TARGET", "tenancy:9090"}
+	transport = []string{"GRPC_INSECURE", "true"}
+	denyList  = []string{"REDIS_URL", "redis://revocation:sentinel-redis-password@redis:6379/0"}
+)
+
 // required is what every start of the api role needs besides identity: the
-// deny-list it consults before accepting a token.
-var required = []string{"REDIS_URL", "redis://revocation:sentinel-redis-password@redis:6379/0"}
+// contexts it dials, how it dials them and the deny-list it consults before
+// accepting a token.
+var required = slices.Concat(targets, transport, denyList)
 
 // devMock declares how these starts resolve identity. Since the edge demands a
 // subject on every route, a start that declares no verifier and no mock is
@@ -46,7 +55,7 @@ func TestFromEnvAppliesTheDefaults(t *testing.T) {
 	cfg, err := app.FromEnv(lookup(withRequired(devMock, "true")...))
 
 	if err != nil {
-		t.Fatalf("FromEnv() = %v, want a start that needs no gRPC target while no context exists", err)
+		t.Fatalf("FromEnv() = %v", err)
 	}
 	if cfg.HTTPAddr != ":8080" || cfg.Service != "bff" || len(cfg.CORSOrigins) != 0 {
 		t.Fatalf("cfg = %+v, want :8080, bff and no browser origin", cfg)
@@ -158,7 +167,7 @@ func TestTheIdentityOfTheProcessIsLeftToTheEnvironment(t *testing.T) {
 }
 
 func TestFromEnvRefusesAStartWithoutTheRevocationStore(t *testing.T) {
-	_, err := app.FromEnv(lookup(devMock, "true"))
+	_, err := app.FromEnv(lookup(append(slices.Concat(targets, transport), devMock, "true")...))
 
 	if !errors.Is(err, app.ErrMissingVariable) || !strings.Contains(err.Error(), "REDIS_URL") {
 		t.Fatalf("FromEnv() = %v, want REDIS_URL named: the edge never serves without the deny-list", err)
@@ -176,7 +185,7 @@ func TestFromEnvRefusesAnUnusableRevocationStoreWithoutEchoingIt(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := app.FromEnv(lookup(devMock, "true", "REDIS_URL", tc.url))
+			_, err := app.FromEnv(lookup(append(slices.Concat(targets, transport), devMock, "true", "REDIS_URL", tc.url)...))
 
 			if !errors.Is(err, tc.wantErr) || strings.Contains(err.Error(), "sentinel-redis-password") {
 				t.Fatalf("FromEnv() = %v, want %v with the URL left out", err, tc.wantErr)
@@ -193,5 +202,66 @@ func TestFromEnvReadsTheRevocationStore(t *testing.T) {
 	}
 	if cfg.Redis.Options == nil || cfg.Redis.Options.Addr != "redis:6379" || cfg.Redis.Options.Username != "revocation" {
 		t.Fatalf("cfg.Redis = %v, want redis:6379 as revocation", cfg.Redis)
+	}
+}
+
+func TestFromEnvNamesTheMissingTarget(t *testing.T) {
+	_, err := app.FromEnv(lookup(append(slices.Concat(transport, denyList), devMock, "true")...))
+
+	if !errors.Is(err, app.ErrMissingVariable) || !strings.Contains(err.Error(), "TENANCY_GRPC_TARGET") {
+		t.Fatalf("FromEnv() = %v, want TENANCY_GRPC_TARGET named", err)
+	}
+}
+
+func TestFromEnvRequiresATransportPolicy(t *testing.T) {
+	_, err := app.FromEnv(lookup(append(slices.Concat(targets, denyList), devMock, "true")...))
+
+	if !errors.Is(err, app.ErrMissingVariable) || !strings.Contains(err.Error(), "GRPC_INSECURE") || !strings.Contains(err.Error(), "GRPC_CA_FILE") {
+		t.Fatalf("FromEnv() = %v, want both transport variables named (GRP-15)", err)
+	}
+}
+
+func TestFromEnvReadsTheTargetAndTheContract(t *testing.T) {
+	cfg, err := app.FromEnv(lookup(withRequired(devMock, "true", "OPENAPI_TENANCY_PATH", "/contracts/openapi/tenancy/v1/openapi.yaml")...))
+
+	if err != nil || cfg.TenancyTarget != "tenancy:9090" || cfg.TenancyContractPath != "/contracts/openapi/tenancy/v1/openapi.yaml" {
+		t.Fatalf("FromEnv() = %+v, %v; want the tenancy target and the path of its contract", cfg, err)
+	}
+}
+
+func TestFromEnvReadsTheDevelopmentOptOut(t *testing.T) {
+	cfg, err := app.FromEnv(lookup(withRequired(devMock, "true", "GRPC_INSECURE", "true")...))
+
+	if err != nil || !cfg.GRPCInsecure {
+		t.Fatalf("FromEnv() = %+v, %v; want GRPCInsecure", cfg, err)
+	}
+}
+
+func TestFromEnvAcceptsATrustAuthority(t *testing.T) {
+	cfg, err := app.FromEnv(lookup(append(slices.Concat(targets, denyList), devMock, "true", "GRPC_CA_FILE", "/etc/ca.pem", "GRPC_SERVER_NAME", "contexts.internal",
+		"GRPC_CLIENT_CERT_FILE", "/etc/bff.crt", "GRPC_CLIENT_KEY_FILE", "/etc/bff.key")...))
+
+	if err != nil {
+		t.Fatalf("FromEnv() = %v", err)
+	}
+	if cfg.GRPCInsecure || cfg.CAFile != "/etc/ca.pem" || cfg.ServerName != "contexts.internal" ||
+		cfg.ClientCertFile != "/etc/bff.crt" || cfg.ClientKeyFile != "/etc/bff.key" {
+		t.Fatalf("cfg = %+v, want the authority, the server name and the client pair", cfg)
+	}
+}
+
+func TestFromEnvRefusesATrustAuthorityWithoutAClientPair(t *testing.T) {
+	_, err := app.FromEnv(lookup(withRequired(devMock, "true", "GRPC_CA_FILE", "/etc/ca.pem")...))
+
+	if !errors.Is(err, app.ErrMissingVariable) || !strings.Contains(err.Error(), "GRPC_CLIENT_CERT_FILE") {
+		t.Fatalf("FromEnv() = %v, want ErrMissingVariable naming the client pair: the contexts demand mutual TLS", err)
+	}
+}
+
+func TestFromEnvRefusesAnInvalidTransportBoolean(t *testing.T) {
+	_, err := app.FromEnv(lookup(withRequired(devMock, "true", "GRPC_INSECURE", "maybe")...))
+
+	if !errors.Is(err, app.ErrInvalidVariable) || !strings.Contains(err.Error(), "GRPC_INSECURE") {
+		t.Fatalf("FromEnv() = %v, want ErrInvalidVariable naming GRPC_INSECURE", err)
 	}
 }

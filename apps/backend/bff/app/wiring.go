@@ -3,17 +3,21 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/mateusmacedo/dmpf/libs/backend/go/authn"
+	kernelgrpc "github.com/mateusmacedo/dmpf/libs/backend/go/grpc"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/boot"
 	obsclock "github.com/mateusmacedo/dmpf/libs/backend/go/observability/clock"
@@ -23,8 +27,10 @@ import (
 	"github.com/mateusmacedo/dmpf/libs/backend/go/redis"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/transport/admission"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"google.golang.org/grpc"
 
 	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/api"
+	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc"
 )
 
 const (
@@ -62,6 +68,43 @@ func WithRevocations(cfg Config) (Config, func() error, error) {
 	return cfg, client.Close, nil
 }
 
+const tenancyBackend = "tenancy"
+
+// backend is one context the edge dials: the name readiness reports it by, the
+// target of its channel and the client config of its methods.
+type backend struct {
+	name   string
+	target string
+	config func(rpc.Options) kernelgrpc.Config
+}
+
+func backendsOf(cfg Config) []backend {
+	return []backend{
+		{tenancyBackend, cfg.TenancyTarget, rpc.TenancyConfig},
+	}
+}
+
+func dialBackends(dial func(string, kernelgrpc.Config, ...grpc.DialOption) (*grpc.ClientConn, error), opts rpc.Options, backends []backend) (rpc.Readiness, error) {
+	conns := make(rpc.Readiness, len(backends))
+	for _, b := range backends {
+		conn, err := dial(b.target, b.config(opts))
+		if err != nil {
+			closeBackends(backends, conns)
+			return nil, err
+		}
+		conns[b.name] = conn
+	}
+	return conns, nil
+}
+
+func closeBackends(backends []backend, conns rpc.Readiness) {
+	for _, b := range slices.Backward(backends) {
+		if conn := conns[b.name]; conn != nil {
+			_ = conn.Close()
+		}
+	}
+}
+
 // Authenticator resolves how this process verifies identity. The development
 // mock is only reachable through the opt-out the config already refused to
 // combine with an issuer, so one start never has two ways of resolving it.
@@ -73,10 +116,20 @@ func Authenticator(ctx context.Context, cfg Config) (ports.Authenticator, error)
 }
 
 // RunWith serves the public routes and the administration port until ctx ends.
-// Readiness follows only the drain: with no bounded context behind the edge
-// yet, there is no dependency whose loss would make it stop taking requests.
+// Readiness falls while a context it dials answers no SERVING and during the
+// drain.
 func RunWith(ctx context.Context, cfg Config, rt *otelboot.Runtime) error {
 	logger := rt.LoggerFor(reflect.TypeFor[Config]().PkgPath())
+	opts, err := ClientOptions(ctx, cfg, rt)
+	if err != nil {
+		return err
+	}
+	backends := backendsOf(cfg)
+	conns, err := dialBackends(rpc.Dial, opts, backends)
+	if err != nil {
+		return err
+	}
+	defer closeBackends(backends, conns)
 
 	ctrl, err := admission.NewController(api.Limits(cfg.Admission), cfg.MetricTenants, admission.DefaultMaxKeys)
 	if err != nil {
@@ -99,10 +152,13 @@ func RunWith(ctx context.Context, cfg Config, rt *otelboot.Runtime) error {
 		Authenticator: authenticator,
 		CORSOrigins:   cfg.CORSOrigins,
 		Logger:        rt.LoggerFor(reflect.TypeFor[api.Options]().PkgPath()),
-		Ready:         func(context.Context) error { return nil },
+		Ready:         conns.Check,
 		Draining:      draining.Load,
 	}
-	handler, err := api.NewHandler(ctrl, rt.Instruments(), options)
+	if options.TenancyContract, err = readContract(cfg.TenancyContractPath); err != nil {
+		return err
+	}
+	handler, err := api.NewHandler(rpc.NewTenancy(conns[tenancyBackend]), ctrl, rt.Instruments(), options)
 	if err != nil {
 		return err
 	}
@@ -157,6 +213,33 @@ func newServer(handler http.Handler, rt *otelboot.Runtime) *http.Server {
 	}
 }
 
+// ClientOptions resolves the transport policy of every client: TLS through the
+// declared authority, or the development opt-out, logged so an audit finds it.
+func ClientOptions(_ context.Context, cfg Config, rt *otelboot.Runtime) (rpc.Options, error) {
+	opts := rpc.Options{
+		Clock:          obsclock.System(),
+		Tracer:         rt.Tracer(),
+		Instruments:    rt.Instruments(),
+		LoggerProvider: rt.LoggerProvider(),
+	}
+	if cfg.CAFile == "" {
+		// WHY: FromEnv guarantees the pair, but Run, RunWith and this function
+		// are exported and a caller that builds Config by hand would otherwise
+		// dial in the clear from a single empty field.
+		if !cfg.GRPCInsecure {
+			return rpc.Options{}, ErrInsecureNotDeclared
+		}
+		opts.Insecure = true
+		return opts, nil
+	}
+	clientTLS, err := rpc.ClientTLS(cfg.CAFile, cfg.ServerName, cfg.ClientCertFile, cfg.ClientKeyFile)
+	if err != nil {
+		return rpc.Options{}, err
+	}
+	opts.TLS = clientTLS
+	return opts, nil
+}
+
 var serverStatement = regexp.MustCompile(`^(?:[a-z][a-z0-9]*: )*(?:[A-Za-z][A-Za-z_., -]*)?`)
 
 func serverErrorLog(rt *otelboot.Runtime) *log.Logger {
@@ -177,4 +260,15 @@ func serverAddress(addr net.Addr) []slog.Attr {
 		return []slog.Attr{slog.String(string(semconv.ServerAddressKey), addr.String())}
 	}
 	return []slog.Attr{slog.String(string(semconv.ServerAddressKey), host), slog.Int(string(semconv.ServerPortKey), number)}
+}
+
+func readContract(path string) ([]byte, error) {
+	if path == "" {
+		return nil, nil
+	}
+	document, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("openapi: %w", err)
+	}
+	return document, nil
 }
