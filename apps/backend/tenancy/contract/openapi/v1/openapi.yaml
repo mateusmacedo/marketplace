@@ -1,0 +1,433 @@
+openapi: 3.1.0
+info:
+  title: Tenancy — tenancy bounded context
+  version: 1.0.0
+  description: >-
+    Public REST edge of the tenancy context, served by apps/backend/bff, which
+    calls the tenancy context over gRPC (ADR-044). The registry of stores lives
+    in the operator's tenant: a caller resolved to any other tenant is refused.
+    Every route of the service references one operation of this document
+    (RST-04). Writes are idempotent by Idempotency-Key (RST-02); reads run
+    outside any transaction (UOW-11). The contract is not covered by the Buf
+    gates.
+servers:
+  - url: http://localhost:8080
+    description: local bff
+security:
+  - bearerAuth: []
+paths:
+  /tenancy/store:
+    post:
+      operationId: registerStore
+      summary: Register a store, the tenant of a seller (idempotent by ref)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Store registered, or already registered under this ref
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+    get:
+      operationId: findStoresByStatus
+      summary: List the stores in one status
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StatusQuery'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Stores in the status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StoreView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /tenancy/store/{ref}:
+    get:
+      operationId: findStore
+      summary: Read the observable state of a store
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreRef'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Current snapshot of the store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /tenancy/store/{ref}/suspend:
+    post:
+      operationId: suspendStore
+      summary: Suspend an active store, with a reason
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreRef'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuspendRequest'
+      responses:
+        '200':
+          description: Store suspended
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /tenancy/store/{ref}/reactivate:
+    post:
+      operationId: reactivateStore
+      summary: Return a suspended store to operation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreRef'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Store reactivated
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Access token do servidor de autorização que o BFF verifica (OIDC). Os
+        comandos exigem a permissão tenancy:write e as consultas tenancy:read,
+        e o tenant resolvido precisa ser o operador; qualquer outro é recusado.
+        No compose local o BFF roda com AUTH_DEV_MOCK=true e lê a identidade do
+        próprio token, sem verificação — informe um JSON como
+        {"sub":"dev","tenant":"marketplace","permissions":["tenancy:write","tenancy:read"]}.
+  parameters:
+    StoreRef:
+      name: ref
+      in: path
+      required: true
+      description: >-
+        Reference of the store: the tenant_id attribute of its Organization and
+        the tenant every context writes for it. A DNS label.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 63
+        pattern: '^[a-z0-9][a-z0-9-]*[a-z0-9]$'
+    StatusQuery:
+      name: status
+      in: query
+      required: true
+      description: Filter the stores by status
+      schema:
+        type: string
+        enum: [active, suspended]
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Client-chosen key that makes the POST idempotent (RST-02, FND-04 §7.6).
+        A POST without it, or with a key outside this format, is refused with
+        400 before any call to the context. The edge scopes the key to the
+        authenticated subject. Within 24h, the same key with the same request
+        answers the stored response, marked by the Idempotent-Replayed header;
+        with another request it is refused with 422 reused-idempotency-key, and
+        while the first request is still in progress with 409
+        in-flight-idempotency-key.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+    IdempotencyKeyOnRead:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Optional on a read, which has no effect to deduplicate; when present it
+        must have the accepted form, or the request is refused with 400
+        invalid-idempotency-key before any call to the context.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+    CorrelationID:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: >-
+        Correlation of the whole chain the request starts (ENV-08). When
+        absent or outside this shape the edge mints one.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]+$'
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [ref, name]
+      additionalProperties: false
+      properties:
+        ref:
+          type: string
+          description: >-
+            3 to 63 characters of a-z, 0-9 and -, without a leading or trailing
+            hyphen; the context refuses any other form with
+            tenancy/store/ref-invalid. Registering a known ref again changes
+            nothing, the name included.
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]*[a-z0-9]$'
+        name:
+          $ref: '#/components/schemas/Text'
+    SuspendRequest:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          $ref: '#/components/schemas/Text'
+    Text:
+      type: string
+      description: >-
+        The name rule of the bookings context, applied to the name of a store
+        (unique per tenant by exact match) and to the reason of a suspension.
+        Up to 200 characters (Unicode code points) of valid UTF-8. Refused
+        characters: control (Unicode category Cc), format (category Cf, such as
+        U+200B, U+202E, U+2060, U+2066 to U+2069 and U+FEFF), the line and
+        paragraph separators U+2028 and U+2029, every variation selector
+        (U+FE00 to U+FE0F, U+E0100 to U+E01EF and the Mongolian U+180B to
+        U+180F) and the other default ignorable code points (such as U+034F and
+        the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0). At least one
+        character must be neither Unicode white space nor a combining mark
+        (category M). The text is neither normalized nor trimmed.
+      minLength: 1
+      maxLength: 200
+    StoreRefResponse:
+      type: object
+      required: [ref]
+      properties:
+        ref:
+          type: string
+    StoreView:
+      type: object
+      required: [ref, name, status, suspensionReason, registeredAt, statusChangedAt]
+      properties:
+        ref:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended]
+        suspensionReason:
+          type: string
+          description: Empty while the store is active.
+        registeredAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch.
+        statusChangedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch of the last transition.
+    Rejection:
+      type: object
+      required: [code, message]
+      description: >-
+        A refusal the domain or the edge declared. Domain codes take the
+        "context/aggregate/reason" form (FND-03 §5.3; ADR-053).
+      properties:
+        code:
+          type: string
+          examples:
+            - tenancy/store/ref-invalid
+            - tenancy/store/name-empty
+            - tenancy/store/reason-empty
+            - tenancy/store/not-active
+            - tenancy/store/not-suspended
+            - tenancy/store/duplicate-name
+            - missing-idempotency-key
+            - invalid-idempotency-key
+            - reused-idempotency-key
+            - in-flight-idempotency-key
+        message:
+          type: string
+  headers:
+    IdempotentReplayed:
+      description: >-
+        Present with the value true when the answer is the stored response of
+        an earlier request with the same Idempotency-Key (IDM-08); absent on the
+        first answer.
+      schema:
+        type: string
+        enum: ['true']
+  responses:
+    BadRequest:
+      description: The request is malformed or misses Idempotency-Key, or carries it outside its format
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    NotFound:
+      description: No store with this ref
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    VersionConflict:
+      description: >-
+        A concurrent write advanced the store (replay the request), or a request
+        with the same Idempotency-Key is still in progress
+        (in-flight-idempotency-key)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Rejected:
+      description: >-
+        The domain refused the command (a business rejection, not a failure), or
+        the Idempotency-Key was already used with another request
+        (reused-idempotency-key)
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    AdmissionRefused:
+      description: Admission control refused the request before reading the body (RES-17)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Unavailable:
+      description: The tenancy context is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Timeout:
+      description: The deadline of the request expired before the context answered (GRP-04)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Failure:
+      description: >-
+        Technical failure, or a refusal of authorization (403, when the caller
+        lacks the permission or is not the operator); the body carries no
+        internal detail (ERR-20)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package company.tenancy.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A suspended store was reactivated in the tenancy bounded context; `ref` is
+// the tenant the store is. Envelope type: com.company.tenancy.store-reactivated.v1 (PTB-03).
+message StoreReactivated {
+  string ref = 1;
+  google.protobuf.Timestamp reactivated_at = 2;
+}
