@@ -113,3 +113,26 @@ antes da fase de bordas quando não há contexto, então não confere o `bff`.
   `github.com/mateusmacedo/dmpf/tree/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/docs/adr`
 - `bff` de referência —
   `github.com/mateusmacedo/dmpf/tree/ddd3d0c4202879f168c7f6bfafaefadd94a3a621/apps/backend/bff`
+
+## Addendum — 2026-10-23
+
+Registrado pela SPEC-XB4NCW4J (DEVS-144), com o primeiro bounded context,
+`tenancy`.
+
+- **O `gate-check` não reprova o CI.** O reutilizável do `dmpf-ci.yml` só executa
+  o `dmpf-gate-check.sh` no job `self-tests`, que depende do input `self-tests`
+  (padrão `false`) e, mesmo ligado, de um diff em `.golangci.yml` ou num
+  `*dmpf-units.json`; o `dmpf-ci.yml` do marketplace não liga o input. No PR #1 e
+  no merge `60d3ba2`, o job "DMPF / DMPF" passou e "Vetores negativos" foi pulado.
+  O "`gate-check` vermelho até o primeiro contexto" da decisão acima não
+  aconteceu: o gate é rodado localmente
+  (`bash node_modules/@mateusmacedo/dmpf-plugin/scripts/dmpf-gate-check.sh`) e
+  descobre os contextos por `git ls-files`, então só os enxerga rastreados.
+- **A fase de bordas do `context-check` passa a conferir o `bff`** a partir de
+  `tenancy`.
+- **O `app/rpc` do `bff` recebeu de volta a borda gRPC genérica** do `bff` de
+  referência (discagem, metadata, replay, readiness e `Classify`), com o cliente
+  e as cinco rotas de `tenancy`; o transporte gRPC (`GRPC_INSECURE` só em
+  desenvolvimento, ou mTLS) passa a ser obrigatório, e o overlay `hmg` do `bff`
+  foi portado do molde.
+- O modelo de tenant que `tenancy` inaugura está na [ADR-013](./013-tenant-e-a-loja-do-seller.md).

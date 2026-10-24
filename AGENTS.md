@@ -93,7 +93,7 @@ Ao mover arquivos ou pastas, verifique todos os imports afetados — inclusive o
 
 ## Visão geral e estrutura
 
-`marketplace` (workspace npm `@marketplace/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011). A única app é o `bff`, a borda REST do DMPF (ADR-012); os bounded contexts do marketplace entram em `apps/backend/` conforme o `docs/roadmap.md`.
+`marketplace` (workspace npm `@marketplace/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011). As apps são o `bff`, a borda REST do DMPF (ADR-012), e o primeiro bounded context, `tenancy` (SPEC-XB4NCW4J); os demais contextos do marketplace entram em `apps/backend/` conforme o `docs/roadmap.md`.
 
 Fonte de verdade dos projetos: `pnpm nx show projects`.
 
@@ -103,6 +103,7 @@ Fonte de verdade dos projetos: `pnpm nx show projects`.
 marketplace/
 ├── apps/
 │   ├── backend/bff/                # borda REST do DMPF (projeto Nx `bff`)
+│   ├── backend/tenancy/            # bounded context `tenancy` (projetos Nx `tenancy` e `tenancy-contract`)
 │   ├── frontend/                   # placeholder — sem projeto Nx
 │   └── serverless/                 # placeholder — sem projeto Nx
 ├── libs/
@@ -142,12 +143,13 @@ Apps Nest criadas a partir daqui seguem tipicamente `src/app/<feature>/` (contro
 | Projeto | Caminho | Tags | Descrição |
 | --- | --- | --- | --- |
 | `bff` | `apps/backend/bff` | `type:app`, `scope:backend`, `stack:go`, `layer:apps` | Borda REST pública: autentica pelo Keycloak (`authn` do kernel), consulta a deny-list de revogação no Redis e expõe `GET /v1/me`; o papel `session-events` alimenta a deny-list. Detalhes em `apps/backend/bff/README.md` e na ADR-012. |
+| `tenancy` | `apps/backend/tenancy` | `type:app`, `scope:backend`, `stack:go`, `layer:apps` | Registro das lojas (tenants) e seu ciclo de vida, no escopo do tenant do operador (`TENANCY_OPERATOR_TENANT`); só gRPC, com as rotas REST `/tenancy/store` no `bff`. Detalhes em `apps/backend/tenancy/README.md` e na SPEC-XB4NCW4J. |
 
 `apps/frontend` e `apps/serverless` seguem como diretórios de destino. Bounded contexts nascem pelo `/dmpf-new-context`; outras apps, pela skill `nx-generate`.
 
 ### Libs
 
-Nenhuma. `libs/backend`, `libs/frontend` e `libs/shared` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira lib compartilhada, use o generator do Nx (`pnpm nx g @nx/js:lib libs/shared/<name>`), com as três tags 3D e `--linter=none`; o passo a passo com todas as flags está em `docs/nx-reference/tasks.md`. O `go.work` declara `go 1.26.10` (diretiva do `@mateusmacedo/dmpf-plugin`), e o único módulo Go até o primeiro bounded context é o do `bff` (ver `docs/guides/primeiro-bounded-context.md`).
+Nenhuma lib TypeScript. A única lib é o contrato Go do `tenancy`, `tenancy-contract` (`apps/backend/tenancy/contract`, tags `type:lib`, `scope:backend`, `stack:go`, `layer:contract`), gerado pelo `bounded-context` do plugin com o próprio release group no `nx.json`. `libs/backend`, `libs/frontend` e `libs/shared` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira lib compartilhada, use o generator do Nx (`pnpm nx g @nx/js:lib libs/shared/<name>`), com as três tags 3D e `--linter=none`; o passo a passo com todas as flags está em `docs/nx-reference/tasks.md`. O `go.work` declara `go 1.26.10` (diretiva do `@mateusmacedo/dmpf-plugin`), e os módulos Go são o do `bff` e os do `tenancy` (o contexto e o `contract`), declarados no `go.work` pelo generator (ver `docs/guides/primeiro-bounded-context.md`).
 
 Sem nenhum projeto com a tag `type:lib`, o `nx release` sai com erro (`Release group "__default__" matches no projects`) em vez de concluir vazio. Por isso o `nx-release.yml` tem o step `Detect lib release candidates`, que pula o versionamento e o push enquanto não houver lib — mesmo padrão do step de candidatos Docker. O pipeline fica armado e ocioso, não vermelho.
 
@@ -233,7 +235,7 @@ Scripts raiz (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm fo
   - `nx-publish-libs.yml` é a republicação **manual** (dispatch com os inputs `tag` e `ref`), pelo mesmo `publish-libs.yaml`, para quando a publicação encadeada falhar.
   - A publicação das libs vai para o GitHub Packages (`https://npm.pkg.github.com`, escopo `@mateusmacedo`), autenticada no CI só com `secrets.GITHUB_TOKEN` (`packages: write`). Quem consome libs publicadas usa um token com `read:packages` no `~/.npmrc` (`//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`) e `@mateusmacedo:registry=https://npm.pkg.github.com` no `.npmrc` do projeto.
   - A separação entre versionamento e publicação vem da ADR-004; o alvo de publicação e o runner atuais seguem a ADR-010, que a supersede em parte.
-- **CI:** `.github/workflows/ci.yml` roda em PRs para `master`, `develop` e `release/**` (ignora mudanças só em `**/*.md` e em `.github/ISSUE_TEMPLATE/**`), no runner `ubuntu-26.04`: `biome ci`, depois `nx affected` de lint, typecheck, test (com `--ci --coverage`), build e e2e, excluindo `tag:stack:go`. Os projetos Go passam pelo `.github/workflows/dmpf-ci.yml`, saída do `init` que chama o reutilizável do platform fixado por SHA; sem bounded context, ele falha no `gate-check` por falta de provider de contexto e não é check obrigatório (ADR-012).
+- **CI:** `.github/workflows/ci.yml` roda em PRs para `master`, `develop` e `release/**` (ignora mudanças só em `**/*.md` e em `.github/ISSUE_TEMPLATE/**`), no runner `ubuntu-26.04`: `biome ci`, depois `nx affected` de lint, typecheck, test (com `--ci --coverage`), build e e2e, excluindo `tag:stack:go`. Os projetos Go passam pelo `.github/workflows/dmpf-ci.yml`, saída do `init` que chama o reutilizável do platform fixado por SHA; o `gate-check` só roda no job `self-tests`, desligado por padrão, então não reprova os PRs e é rodado localmente por `bash node_modules/@mateusmacedo/dmpf-plugin/scripts/dmpf-gate-check.sh`; o `dmpf-ci.yml` não é check obrigatório (ADR-012).
 - **Demais workflows:** `publish-libs.yaml` e `detect-apps.yaml` são reutilizáveis **locais** (`on: workflow_call`), chamados por `uses: ./.github/workflows/...`. O `cd-dev-hmg.yml` é um **template de CD desligado**, com apenas `workflow_dispatch` e o job de deploy comentado (ver `docs/ci-cd/`); seu job `detect` usa o `detect-apps.yaml` local, e o deploy comentado aponta para `./.github/workflows/deploy-eks.yaml`, reutilizável que **não existe** neste repositório. Ele deve ser criado quando o CD for ligado, com roles AWS, registry e repositório de infraestrutura do próprio projeto; o mesmo vale para os modelos ECS, on-premises e Lambda.
 
 ---
@@ -341,6 +343,8 @@ Antes de criar algo novo, considere:
 - `docs/adr/007-fronteira-plugin-template.md` — ADR supersedido; o template é autônomo (sem consumo de plugin externo).
 - `docs/adr/010-migracao-github-linear.md` — plataforma GitHub, publicação no GitHub Packages e tracker Linear; supersede a ADR-005 e, em parte, as ADR-004 e ADR-008.
 - `docs/adr/011-template-consome-dmpf-por-versao.md` — consumo do DMPF por versão: plugin, credencial do registry, smoke, release sem grupos e `dmpf-ci.yml`.
+- `docs/adr/012-borda-e-infra-alinhadas-ao-dmpf.md` — borda e infraestrutura do DMPF (Keycloak, `authn` no `bff`, Redpanda, REST), com o addendum do `gate-check`.
+- `docs/adr/013-tenant-e-a-loja-do-seller.md` — modelo de tenant: a loja do seller, o tenant do operador e a projeção declarada entre eles.
 - `docs/guides/primeiro-bounded-context.md` — do template ao primeiro bounded context verde.
 - `docs/nx-reference/tasks.md` — guia prático de configuração de tasks.
 - `docs/specs/` — specs de produto/técnicas.
