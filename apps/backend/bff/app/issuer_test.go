@@ -58,8 +58,32 @@ func newSigningIssuer(t *testing.T, hold func()) signingIssuer {
 			"n": encode(key.N.Bytes()), "e": encode(big.NewInt(int64(key.E)).Bytes()),
 		}}})
 	})
+	issuer := signingIssuer{url: server.URL, key: key}
+	mux.HandleFunc("POST "+tokenEndpoint, issuer.passwordGrant)
 	server.Config.Handler = mux
-	return signingIssuer{url: server.URL, key: key}
+	return issuer
+}
+
+// tokenEndpoint is where Keycloak answers the password grant, under the issuer.
+const tokenEndpoint = "/protocol/openid-connect/token"
+
+const (
+	grantClient   = "marketplace-dev"
+	grantUser     = "operator"
+	grantPassword = "sentinel-grant-password"
+)
+
+// passwordGrant answers like Keycloak: a token for the one user and client it
+// knows, invalid_grant for any other credential.
+func (i signingIssuer) passwordGrant(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.PostFormValue("grant_type") != "password" || r.PostFormValue("client_id") != grantClient ||
+		r.PostFormValue("username") != grantUser || r.PostFormValue("password") != grantPassword {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"Invalid user credentials"}`))
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "granted-" + grantUser, "expires_in": 300, "token_type": "Bearer"})
 }
 
 // env points the api role at this issuer, reading the tenant the way the

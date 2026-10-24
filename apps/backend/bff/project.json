@@ -102,18 +102,9 @@
     "keycloak-up": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose -f infra/local/docker-compose.yml --profile keycloak up -d --wait keycloak && docker compose -f infra/local/docker-compose.yml --profile keycloak run --rm bff-keycloak-seed",
+        "command": "docker compose -f infra/local/docker-compose.yml --profile keycloak up -d --wait keycloak && { bash apps/backend/bff/deploy/keycloak/converged.sh || docker compose -f infra/local/docker-compose.yml --profile keycloak run --rm bff-keycloak-seed; }",
         "cwd": "{workspaceRoot}"
       }
-    },
-    "operator-token": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "bash scripts/operator-token.sh",
-        "cwd": "{projectRoot}"
-      },
-      "dependsOn": ["keycloak-up"]
     },
     "serve": {
       "executor": "nx:run-commands",

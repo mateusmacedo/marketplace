@@ -37,6 +37,7 @@ func settings(cfg Config) []slog.Attr {
 		slog.String("drain_delay", cfg.DrainDelay.String()),
 		slog.Any("authn", cfg.Auth),
 		slog.Any("redis", cfg.Redis),
+		slog.String("auth_token_client_id", cfg.TokenClientID),
 	}
 }
 

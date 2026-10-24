@@ -48,7 +48,7 @@ func TestTheProcessConfiguredRecordCarriesTheAllowlistOfTheEdge(t *testing.T) {
 	record, _ := edgeTelemetry.ProcessConfigured(t, configWithSecrets())
 
 	got := obstest.SettingKeys(record)
-	want := []string{"admin_addr", "authn.audience", "authn.dev_mock", "authn.discovery_timeout", "authn.issuer", "authn.permission_claims",
+	want := []string{"admin_addr", "auth_token_client_id", "authn.audience", "authn.dev_mock", "authn.discovery_timeout", "authn.issuer", "authn.permission_claims",
 		"authn.revocation", "authn.tenant_claim", "cors_origins", "drain_delay", "grpc_ca_file", "grpc_client_cert_file",
 		"grpc_client_key_file", "grpc_insecure", "grpc_server_name", "http_addr", "metric_tenants", "openapi_tenancy_path", "redis.addr",
 		"redis.command_timeout", "redis.dial_timeout", "redis.tls", "redis.username", "tenancy_grpc_target"}

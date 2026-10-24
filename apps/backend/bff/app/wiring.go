@@ -41,6 +41,10 @@ const (
 	maxHeaderBytes    = 1 << 16
 
 	keyDrainDelay = "dmpf.drain.delay"
+
+	// tokenTimeout bounds the password exchange below the route budget, so a
+	// silent issuer answers 504 from the edge instead of a cut connection.
+	tokenTimeout = 1500 * time.Millisecond
 )
 
 func Run(ctx context.Context, cfg Config) error {
@@ -157,6 +161,10 @@ func RunWith(ctx context.Context, cfg Config, rt *otelboot.Runtime) error {
 	}
 	if options.TenancyContract, err = readContract(cfg.TenancyContractPath); err != nil {
 		return err
+	}
+	if cfg.TokenClientID != "" {
+		options.TokenIssuer = api.NewPasswordGrant(cfg.Auth.Issuer, cfg.TokenClientID, api.NewTokenClient(), tokenTimeout)
+		logger.WarnContext(ctx, "development token route enabled", string(semconv.HTTPRouteKey), api.TokenPath)
 	}
 	handler, err := api.NewHandler(rpc.NewTenancy(conns[tenancyBackend]), ctrl, rt.Instruments(), options)
 	if err != nil {

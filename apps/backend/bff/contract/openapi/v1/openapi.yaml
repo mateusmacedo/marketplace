@@ -6,8 +6,60 @@ info:
     Public REST edge of the marketplace. Every route authenticates the bearer
     access token issued by the identity provider and resolves the tenant from
     it; identity asserted by the client is never a source and, when it
-    diverges from the token, is refused.
+    diverges from the token, is refused. The one exception is POST /auth/token,
+    which exists only in development.
 paths:
+  /auth/token:
+    post:
+      operationId: issueToken
+      summary: Access token for a development user (password grant)
+      description: >-
+        Exchanges the username and the password of a user of the realm the edge
+        verifies for an access token, through the public client of
+        AUTH_TOKEN_CLIENT_ID. The route exists only when that variable is set,
+        which happens only in development; elsewhere it answers 404. It demands
+        no credential, and the answer of the identity provider never reaches the
+        caller. Idempotency-Key is required because every POST of the edge
+        declares one (RST-02); a replay issues another token.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/CommandIdempotencyKey'
+        - $ref: '#/components/parameters/AssertedTenant'
+        - $ref: '#/components/parameters/AssertedSubject'
+        - $ref: '#/components/parameters/AssertedTenantQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: The access token issued for the user.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+        '400':
+          $ref: '#/components/responses/InvalidTokenRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/IssuerUnavailable'
+        '504':
+          $ref: '#/components/responses/IssuerTimeout'
+        default:
+          $ref: '#/components/responses/Failure'
   /v1/me:
     get:
       operationId: me
@@ -68,6 +120,15 @@ components:
         type: string
         pattern: '^[A-Za-z0-9._-]{1,128}$'
         maxLength: 128
+    CommandIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Required on every POST; outside the accepted form the request is refused with invalid-idempotency-key.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+        maxLength: 128
     AssertedTenant:
       name: X-Tenant-ID
       in: header
@@ -94,6 +155,10 @@ components:
       description: Correlation the edge kept or minted for the request.
       schema:
         type: string
+    NoStore:
+      description: The answer carries a token and is never cached (no-store).
+      schema:
+        type: string
   schemas:
     Profile:
       type: object
@@ -106,6 +171,33 @@ components:
         tenant:
           type: string
           description: The tenant_id of the one organization in the access token.
+    TokenRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 255
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+    Token:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: The access token, to send as Authorization Bearer.
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Seconds until the access token expires.
     Rejection:
       type: object
       additionalProperties: false
@@ -120,6 +212,36 @@ components:
   responses:
     InvalidRequest:
       description: The request carries an Idempotency-Key outside the accepted form (code invalid-idempotency-key).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    InvalidTokenRequest:
+      description: >-
+        The body is not a TokenRequest (malformed-body), a field is empty or too
+        long (invalid-request), or Idempotency-Key is missing or outside the
+        accepted form (missing-idempotency-key, invalid-idempotency-key).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    InvalidCredentials:
+      description: >-
+        The identity provider refused the username or the password
+        (invalid-credentials), or the request carries an Authorization header
+        that does not verify (unauthenticated).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    IssuerUnavailable:
+      description: The identity provider is unreachable or did not issue a token (code unavailable).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    IssuerTimeout:
+      description: The identity provider did not answer in time (code deadline-exceeded).
       content:
         application/json:
           schema:

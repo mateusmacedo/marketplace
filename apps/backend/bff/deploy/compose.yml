@@ -29,6 +29,9 @@ services:
       OIDC_ISSUER: http://keycloak.localhost:${KEYCLOAK_PORT:-8180}/realms/dmpf
       OIDC_AUDIENCE: dmpf-bff
       OIDC_TENANT_CLAIM: organization.*.tenant_id
+      # Liga o POST /auth/token: troca a senha do operador por um token pelo
+      # client marketplace-dev. Só em desenvolvimento, nunca no hmg.
+      AUTH_TOKEN_CLIENT_ID: marketplace-dev
       # Sem GRPC_SERVER_NAME: cada alvo é verificado pelo próprio host.
       GRPC_CA_FILE: /pki/ca.crt
       GRPC_CLIENT_CERT_FILE: /pki/bff-client.crt
@@ -96,8 +99,8 @@ services:
         required: false
 
   # Seed complementar do realm dmpf (deploy/keycloak/seed.sh): Organization e
-  # roles do operador, o usuário operator e o client marketplace-dev. Roda depois
-  # do keycloak-init gerado e é idempotente.
+  # roles do operador, o usuário operator e o client marketplace-dev, com o login
+  # do Swagger UI. Roda depois do keycloak-init gerado e é idempotente.
   bff-keycloak-seed:
     image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
     profiles: [keycloak]
@@ -107,6 +110,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KEYCLOAK_SEED_PASSWORD: ${KEYCLOAK_SEED_PASSWORD:-dmpf-dev-password}
+      SWAGGER_PORT: ${SWAGGER_PORT:-8082}
     volumes:
       - ./keycloak/seed.sh:/seed/seed.sh:ro
     depends_on:

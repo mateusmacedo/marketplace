@@ -265,3 +265,24 @@ func TestFromEnvRefusesAnInvalidTransportBoolean(t *testing.T) {
 		t.Fatalf("FromEnv() = %v, want ErrInvalidVariable naming GRPC_INSECURE", err)
 	}
 }
+
+func TestFromEnvReadsTheDevelopmentTokenClient(t *testing.T) {
+	issuer := []string{"OIDC_ISSUER", "https://issuer.example/realms/dmpf", "OIDC_AUDIENCE", "dmpf-bff", "OIDC_TENANT_CLAIM", "tenant"}
+
+	cfg, err := app.FromEnv(lookup(withRequired(issuer...)...))
+	if err != nil || cfg.TokenClientID != "" {
+		t.Fatalf("FromEnv() = %q, %v; want no token route by default", cfg.TokenClientID, err)
+	}
+	cfg, err = app.FromEnv(lookup(withRequired(append(issuer, "AUTH_TOKEN_CLIENT_ID", "marketplace-dev")...)...))
+	if err != nil || cfg.TokenClientID != "marketplace-dev" {
+		t.Fatalf("FromEnv() = %q, %v; want marketplace-dev", cfg.TokenClientID, err)
+	}
+}
+
+func TestFromEnvRefusesTheDevelopmentTokenClientWithoutAnIssuer(t *testing.T) {
+	_, err := app.FromEnv(lookup(withRequired(devMock, "true", "AUTH_TOKEN_CLIENT_ID", "marketplace-dev")...))
+
+	if !errors.Is(err, app.ErrTokenWithoutIssuer) || !strings.Contains(err.Error(), "OIDC_ISSUER") {
+		t.Fatalf("FromEnv() = %v, want ErrTokenWithoutIssuer naming OIDC_ISSUER: the mock verifies no password", err)
+	}
+}

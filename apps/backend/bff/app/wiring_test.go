@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/tracing"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/testkit/obstest"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -501,4 +503,48 @@ func durationPoints(t *testing.T, reader *sdkmetric.ManualReader) uint64 {
 		}
 	}
 	return count
+}
+
+func postToken(t *testing.T, addr, body string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr+"/auth/token", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest() = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "token-1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /auth/token = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	answer, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(answer)
+}
+
+func TestTheDevelopmentTokenRouteExchangesAtTheTokenEndpointOfTheIssuer(t *testing.T) {
+	issuer := newSigningIssuer(t, nil)
+	e := startEdge(t, append(issuer.env(), "AUTH_TOKEN_CLIENT_ID", grantClient)...)
+
+	status, body := postToken(t, e.addr, `{"username":"`+grantUser+`","password":"`+grantPassword+`"}`)
+	if status != http.StatusOK || !strings.Contains(body, `"access_token":"granted-operator"`) {
+		t.Fatalf("POST /auth/token = %d %s, want 200 with the token of the issuer", status, body)
+	}
+	if status, body := postToken(t, e.addr, `{"username":"`+grantUser+`","password":"wrong"}`); status != http.StatusUnauthorized || !strings.Contains(body, "invalid-credentials") {
+		t.Fatalf("POST /auth/token with a wrong password = %d %s, want 401 invalid-credentials", status, body)
+	}
+	e.stop(t)
+
+	if enabled := recordNamed(t, e.records(t), "development token route enabled"); enabled.Severity() < log.SeverityWarn {
+		t.Fatalf("severity = %v, want the opt-out logged at warn so an audit finds it", enabled.Severity())
+	}
+}
+
+func TestWithoutTheTokenClientTheEdgeServesNoTokenRoute(t *testing.T) {
+	issuer := newSigningIssuer(t, nil)
+	e := startEdge(t, issuer.env()...)
+
+	if status, body := postToken(t, e.addr, `{"username":"`+grantUser+`","password":"`+grantPassword+`"}`); status != http.StatusNotFound {
+		t.Fatalf("POST /auth/token = %d %s, want 404 without AUTH_TOKEN_CLIENT_ID", status, body)
+	}
 }

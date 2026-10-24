@@ -1,7 +1,8 @@
 // Package api is the public REST edge: each route is a kernel http.Route that
 // references a published OpenAPI operation (RST-04), runs only behind the
 // identity the authn verified and the tenant it resolved, and either answers
-// from that identity or forwards to one gRPC call of a bounded context.
+// from that identity or forwards to one gRPC call of a bounded context. The
+// development token route, mounted only when configured, is the exception.
 package api
 
 import (
@@ -43,7 +44,8 @@ const (
 // Options is what the composition root decides beyond the clients: the route
 // budget the request deadline derives from, the contracts to serve (nil serves
 // nothing), the browser origins allowed to call the edge (none by default) and
-// the readiness of the contexts (nil serves no readiness route).
+// the readiness of the contexts (nil serves no readiness route) and the issuer
+// of the development token route (nil serves no POST /auth/token).
 type Options struct {
 	Budget          deadline.Budget
 	Authenticator   ports.Authenticator
@@ -55,6 +57,7 @@ type Options struct {
 	TracerProvider  trace.TracerProvider
 	MeterProvider   metric.MeterProvider
 	Clock           obsclock.Clock
+	TokenIssuer     TokenIssuer
 }
 
 type binding struct {
@@ -108,8 +111,13 @@ func route(contractRoot, name, method, path string, budget deadline.Budget, perm
 	}
 }
 
+// Routes are the routes the edge always serves, each behind a subject and a
+// tenant; TokenRoute is the only one outside them.
 func Routes(budget deadline.Budget) []kernelhttp.Route {
-	bound := bindings(budget)
+	return routesOf(bindings(budget))
+}
+
+func routesOf(bound []binding) []kernelhttp.Route {
 	routes := make([]kernelhttp.Route, len(bound))
 	for i, b := range bound {
 		routes[i] = b.route
@@ -129,8 +137,10 @@ func ValidateRoutes(routes []kernelhttp.Route) error {
 	return nil
 }
 
+// Limits declares every route the edge may serve, the development token route
+// included, so admission never refuses it as undeclared.
 func Limits(limit admission.Limit) map[string]admission.Limit {
-	routes := Routes(deadline.Budget{})
+	routes := append(Routes(deadline.Budget{}), TokenRoute(deadline.Budget{}))
 	limits := make(map[string]admission.Limit, len(routes))
 	for _, route := range routes {
 		limits[pattern(route)] = limit
@@ -153,7 +163,11 @@ func NewHandler(tenancy rpc.Tenancy, ctrl *admission.Controller, instruments *me
 		return nil, ErrAuthenticatorRequired
 	}
 	bound := bindings(opts.Budget)
-	if err := ValidateRoutes(Routes(opts.Budget)); err != nil {
+	if opts.TokenIssuer != nil {
+		issuer := opts.TokenIssuer
+		bound = append(bound, binding{route: TokenRoute(opts.Budget), build: func(handlers) http.HandlerFunc { return issueToken(issuer) }})
+	}
+	if err := ValidateRoutes(routesOf(bound)); err != nil {
 		return nil, err
 	}
 	h := handlers{tenancy: tenancy}
