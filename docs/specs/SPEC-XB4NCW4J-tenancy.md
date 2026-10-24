@@ -268,8 +268,13 @@ está registrado na ADR-013 (`docs/adr/013-tenant-e-a-loja-do-seller.md`).
   do operador `marketplace` (atributo `tenant_id=marketplace`), as roles
   `tenancy:read` e `tenancy:write`, um usuário operador membro dessa
   organização com as duas roles e o que o Swagger precisa para obter o token.
-- Um comando do projeto obtém o JWT do operador, para uso no Swagger e em
-  chamadas manuais.
+- O `bff` serve `POST /auth/token` só em desenvolvimento (com
+  `AUTH_TOKEN_CLIENT_ID`): troca usuário e senha do operador por um JWT pelo
+  password grant do Keycloak, para chamadas manuais; credencial recusada
+  responde `401 invalid-credentials`, e Keycloak fora, `503`/`504`.
+- No Swagger UI, o login do operador é o Authorize do esquema OAuth2 `keycloak`
+  (authorization code) que o contrato do `tenancy` oferece ao lado do
+  `bearerAuth`, pelo client `marketplace-dev`.
 
 ## Critérios de aceite
 
