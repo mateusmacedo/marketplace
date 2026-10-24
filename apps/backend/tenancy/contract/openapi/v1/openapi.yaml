@@ -15,6 +15,7 @@ servers:
     description: local bff
 security:
   - bearerAuth: []
+  - keycloak: [openid]
 paths:
   /tenancy/store:
     post:
@@ -22,6 +23,7 @@ paths:
       summary: Register a store, the tenant of a seller (idempotent by ref)
       security:
         - bearerAuth: []
+        - keycloak: [openid]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CorrelationID'
@@ -62,6 +64,7 @@ paths:
       summary: List the stores in one status
       security:
         - bearerAuth: []
+        - keycloak: [openid]
       parameters:
         - $ref: '#/components/parameters/StatusQuery'
         - $ref: '#/components/parameters/IdempotencyKeyOnRead'
@@ -93,6 +96,7 @@ paths:
       summary: Read the observable state of a store
       security:
         - bearerAuth: []
+        - keycloak: [openid]
       parameters:
         - $ref: '#/components/parameters/StoreRef'
         - $ref: '#/components/parameters/IdempotencyKeyOnRead'
@@ -122,6 +126,7 @@ paths:
       summary: Suspend an active store, with a reason
       security:
         - bearerAuth: []
+        - keycloak: [openid]
       parameters:
         - $ref: '#/components/parameters/StoreRef'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -164,6 +169,7 @@ paths:
       summary: Return a suspended store to operation
       security:
         - bearerAuth: []
+        - keycloak: [openid]
       parameters:
         - $ref: '#/components/parameters/StoreRef'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -203,8 +209,21 @@ components:
         Access token do servidor de autorização que o BFF verifica (OIDC). Os
         comandos exigem a permissão tenancy:write e as consultas tenancy:read,
         e o tenant resolvido precisa ser o operador; qualquer outro é recusado.
-        No ambiente local, o token do operador vem do Keycloak do compose:
-        `bash apps/backend/bff/scripts/operator-token.sh`.
+        No ambiente local, o token do operador vem da rota de desenvolvimento
+        POST /auth/token do BFF (contrato do bff), ou pelo esquema keycloak.
+    keycloak:
+      type: oauth2
+      description: >-
+        Login do operador no Keycloak do compose local (realm dmpf), só em
+        desenvolvimento. No Authorize do Swagger UI, informe o client_id
+        marketplace-dev e deixe o client_secret vazio (client público, sem PKCE
+        obrigatório); o access token emitido é o mesmo que o bearerAuth aceita.
+      flows:
+        authorizationCode:
+          authorizationUrl: http://keycloak.localhost:8180/realms/dmpf/protocol/openid-connect/auth
+          tokenUrl: http://keycloak.localhost:8180/realms/dmpf/protocol/openid-connect/token
+          scopes:
+            openid: Sessão OpenID Connect do operador
   parameters:
     StoreRef:
       name: ref
