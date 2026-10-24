@@ -259,7 +259,7 @@ handle(req):
 - [ ] Uma rota com sujeito e sem permissão declarada faz a partida falhar com exit 2 (teste unitário).
 - [ ] Gates do DMPF aplicáveis passam localmente: `conformance` (com o baseline regenerado), `modsync --check` e `infrasync --check`.
 - [ ] O `gate-check` reprova só pela ausência de provider de contexto, e o `context-check --phase structural` encerra sem contexto; nenhuma outra falha aparece nos dois.
-- [ ] `pnpm nx run bff:test-race`, `pnpm nx run bff:govulncheck`, `pnpm nx run bff:test-keycloak` e `pnpm nx run bff:k8s-render` passam, e `kubectl kustomize infra/k8s/overlays/hmg` resolve sem erro.
+- [ ] `pnpm nx run bff:test-race`, `pnpm nx run bff:govulncheck`, `pnpm nx run bff:test-keycloak` e `pnpm nx run bff:k8s-render` passam, e `kubectl kustomize infra/k8s/overlays/{dev,hmg}/apps` resolve sem erro.
 - [ ] Validação do workspace passa: `pnpm biome ci .` e `pnpm nx affected -t lint,typecheck,test,build --exclude=@marketplace/source`.
 - [ ] No PR, o `dmpf-ci.yml` só reprova no `gate-check`, pela ausência de provider de contexto; o `ci.yml` passa.
 

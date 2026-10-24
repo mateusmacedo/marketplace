@@ -7,7 +7,7 @@ bounded contexts Go do DMPF no mesmo workspace.
 
 - Node.js `24` (ver `.nvmrc` / `.node-version`)
 - pnpm `11` (habilite via `corepack enable`)
-- Go na diretiva do `go.work` (`1.26.9` com o `@mateusmacedo/dmpf-plugin` `1.0.0-rc.3`), `bash`, `jq` e `git`
+- Go na diretiva do `go.work` (`1.26.10` com o `@mateusmacedo/dmpf-plugin` `1.0.0-rc.7`), `bash`, `jq` e `git`
 - Token do GitHub com o escopo `read:packages`, porque o `@mateusmacedo/dmpf-plugin` vem do
   GitHub Packages, que exige autenticação até para pacote público
 
@@ -215,8 +215,8 @@ pela mudança (`nx affected`), na ordem:
 
 Os projetos Go (`tag:stack:go`) ficam fora desse pipeline e passam pelo
 `.github/workflows/dmpf-ci.yml`, que chama o workflow reutilizável do platform fixado por
-SHA. No template, sem nenhum módulo Go, o gate de conformance desse workflow falha: ele não é
-check obrigatório e passa a valer no projeto derivado a partir do primeiro contexto.
+SHA. Sem bounded context, o `gate-check` desse workflow falha por falta de provider de contexto
+(ADR-012): ele não é check obrigatório e passa a valer a partir do primeiro contexto.
 
 ## Testes
 
