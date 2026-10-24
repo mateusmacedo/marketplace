@@ -46,9 +46,13 @@ antes da fase de bordas quando não há contexto, então não confere o `bff`.
   `exp` e `sub` e resolve o tenant por `organization.*.tenant_id`. Os headers
   `X-Subject-ID` e `X-Tenant-ID` e a query `tenant_id` são asserções do cliente:
   divergência com o token é recusada com 403 `identity-mismatch`.
-- **Revogação com falha fechada**: cada token aceito é consultado na deny-list
-  do Redis; Redis fora ou lento além de `OIDC_REVOCATION_TIMEOUT_MS` recusa o
-  token com 401.
+- **Revogação com falha fechada**: com o verificador OIDC, cada token aceito é
+  consultado na deny-list do Redis; Redis fora ou lento além de
+  `OIDC_REVOCATION_TIMEOUT_MS` recusa o token com 401. O `AUTH_DEV_MOCK`, que o
+  compose local e o overlay `dev` usam por não terem servidor de autorização,
+  aceita a identidade declarada no próprio Bearer, sem verificação nem consulta
+  à deny-list (`authn.DevAuthenticator` do kernel); ele é exclusivo com o
+  `OIDC_ISSUER` e não vale fora do desenvolvimento.
 - **Broker Redpanda (Kafka)**, pelo adaptador `kafka` do kernel.
 - **Borda REST** no `bff` (`apps/backend/bff`), portado do `bff` de referência e
   podado dos contextos do platform. O pacote `app/rpc` nasce só com o `doc.go`,
@@ -94,6 +98,8 @@ antes da fase de bordas quando não há contexto, então não confere o `bff`.
   esta ADR.
 - O `dmpf-ci.yml` segue vermelho no `gate-check` até `tenancy`, e nenhum gate do
   DMPF verifica a estrutura do `bff` antes disso.
+- No compose local e no overlay `dev`, com o `AUTH_DEV_MOCK`, a revogação não
+  tem efeito; a prova dela é o `test-keycloak` ou o `serve` com OIDC.
 - O teste com Keycloak real roda só localmente: o `dmpf-ci.yml` gerado não sobe
   o Keycloak, e o CI cobre o mesmo comportamento com um issuer falso.
 - O `bff` fica fora da release enquanto a release Docker cobrir só apps fora de

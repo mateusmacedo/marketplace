@@ -62,7 +62,7 @@ expor rotas autenticadas por tenant sem montar infraestrutura à mão.
 - [P0] Falha fechada na revogação: Redis indisponível, ou lento além de `OIDC_REVOCATION_TIMEOUT_MS`, DEVE recusar o token com 401.
 - [P0] NUNCA versionar segredo. Valores de desenvolvimento só nos `*.example`, e o `.env` fica ignorado pelo git.
 - [P0] NUNCA reescrever specs `done` nem ADRs históricas para trocar `nx-base-template`; elas registram o estado da época.
-- [P1] O `bff` DEVE importar só o kernel DMPF (`http`, `authn`, `redis`, `observability`, `ports`, `transport`) e a biblioteca padrão, como declara o manifesto `dmpf-units.json`.
+- [P1] O `bff` DEVE importar só o kernel DMPF (`http`, `authn`, `redis`, `observability`, `ports`, `transport` e, no middleware, os utilitários de correlação e locale do `grpc`) e a biblioteca padrão, como declara o manifesto `dmpf-units.json`.
 - [P1] Todo commit desta spec sai verde: `biome ci`, `nx affected` (lint, typecheck, test, build) e os gates do DMPF aplicáveis a um workspace sem bounded context (`conformance`, `modsync`, `infrasync`). O `gate-check` e a fase de bordas do `context-check` só verificam algo a partir do primeiro contexto (ver "Decisões técnicas").
 </constraints>
 
@@ -94,7 +94,7 @@ expor rotas autenticadas por tenant sem montar infraestrutura à mão.
 - [ ] **[P0] Rota `GET /v1/me`**: devolve `200` com `{"subject": "<sub>", "tenant": "<tenant_id>"}` lidos do contexto de execução resolvido.
   - `Requires: RequireSubjectAndTenant`, `Permission: profile`, com o contrato em `apps/backend/bff/contract/openapi/v1/openapi.yaml`.
   - Recusas: token ausente, inválido ou expirado → 401 `unauthenticated`. Token sem organização, ou com mais de uma → 403 `tenant-unresolved`. Token sem o scope `profile` → 403 `permission-denied`. Header ou query de identidade divergente do token → 403 `identity-mismatch`.
-  - O corpo de erro segue o formato padronizado do kernel `http`.
+  - O corpo de erro é o `{"code", "message"}` das recusas do `bff`, com o `code` vindo do motivo do kernel `http`.
 - [ ] **[P0] App `bff` — papel `session-events`**: subcomando `bff session-events`, processo à parte com uma réplica, com configuração própria (`deploy/.env.session-events.example`).
   - `POST /backchannel-logout` (`SESSION_EVENTS_ADDR`) recebe o back-channel logout do client `dmpf-portal`.
   - O polling dos admin events do Keycloak usa o client `dmpf-session-events`, a cada `OIDC_SESSION_EVENTS_INTERVAL_SECONDS`.
