@@ -96,6 +96,14 @@
       "projectChangelogs": {
         "entryWhenNoChanges": "Initial release"
       }
+    },
+    "groups": {
+      "go-contract-tenancy": {
+        "projects": ["tenancy-contract"],
+        "releaseTag": {
+          "pattern": "apps/backend/tenancy/contract/v{version}"
+        }
+      }
     }
   },
   "sync": {

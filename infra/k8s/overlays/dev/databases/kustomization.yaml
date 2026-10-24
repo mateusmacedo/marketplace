@@ -10,5 +10,7 @@ resources:
 secretGenerator:
   - name: databases
     literals:
+      - tenancy=tenancy-dev
+      - tenancy_migrator=tenancy-migrator-dev
     options:
       disableNameSuffixHash: true
