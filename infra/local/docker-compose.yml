@@ -25,3 +25,4 @@ include:
   - compose/provisioning.generated.yml
   - compose/swagger-ui.yml
   - compose/keycloak.yml
+  - ../../apps/backend/bff/deploy/compose.yml
