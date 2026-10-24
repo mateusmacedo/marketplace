@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	kernelhttp "github.com/mateusmacedo/dmpf/libs/backend/go/http"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/ports"
 	"gopkg.in/yaml.v3"
 
@@ -16,13 +17,35 @@ import (
 type document struct {
 	Paths      map[string]map[string]operation `yaml:"paths"`
 	Components struct {
-		Parameters      map[string]parameter `yaml:"parameters"`
-		Responses       map[string]response  `yaml:"responses"`
-		SecuritySchemes map[string]struct {
-			Type   string `yaml:"type"`
-			Scheme string `yaml:"scheme"`
-		} `yaml:"securitySchemes"`
+		Parameters      map[string]parameter      `yaml:"parameters"`
+		Responses       map[string]response       `yaml:"responses"`
+		SecuritySchemes map[string]securityScheme `yaml:"securitySchemes"`
 	} `yaml:"components"`
+}
+
+type securityScheme struct {
+	Type   string `yaml:"type"`
+	Scheme string `yaml:"scheme"`
+	Flows  struct {
+		AuthorizationCode struct {
+			AuthorizationURL string            `yaml:"authorizationUrl"`
+			TokenURL         string            `yaml:"tokenUrl"`
+			Scopes           map[string]string `yaml:"scopes"`
+		} `yaml:"authorizationCode"`
+	} `yaml:"flows"`
+}
+
+// declared reports whether the scheme is one the edge accepts: the bearer token
+// it verifies, or the authorization code flow that issues that same token.
+func (s securityScheme) declared() bool {
+	switch s.Type {
+	case "http":
+		return s.Scheme == "bearer"
+	case "oauth2":
+		code := s.Flows.AuthorizationCode
+		return code.AuthorizationURL != "" && code.TokenURL != "" && len(code.Scopes) > 0
+	}
+	return false
 }
 
 type response struct {
@@ -93,8 +116,9 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 		"reactivateStore":    {"200", "400", "404", "409", "422", "429", "503", "504", "default"},
 		"findStore":          {"200", "400", "404", "429", "503", "504", "default"},
 		"findStoresByStatus": {"200", "400", "404", "429", "503", "504", "default"},
+		"issueToken":         {"200", "400", "401", "403", "429", "503", "504", "default"},
 	}
-	routes := api.Routes(routeBudget)
+	routes := append(api.Routes(routeBudget), api.TokenRoute(routeBudget))
 	if len(routes) == 0 {
 		t.Fatal("Routes() is empty, want every route the edge serves checked against the contract")
 	}
@@ -121,9 +145,7 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 			if bearer := doc.Components.SecuritySchemes["bearerAuth"]; bearer.Type != "http" || bearer.Scheme != "bearer" {
 				t.Fatalf("bearerAuth = %+v, want an http bearer scheme", bearer)
 			}
-			if len(op.Security) != 1 || op.Security[0]["bearerAuth"] == nil {
-				t.Fatalf("%s security = %v, want bearerAuth", route.Name, op.Security)
-			}
+			requireSecurity(t, doc, route, op)
 
 			byName := map[string]parameter{}
 			for _, p := range op.Parameters {
@@ -143,7 +165,9 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 				t.Fatalf("%s: %s schema = %+v, want pattern %s and maxLength 128 (IDM-02)", route.Name, api.IdempotencyHeader, key.Schema, ports.IdempotencyKeyPattern)
 			}
 
-			if route.Method == http.MethodPost {
+			// WHY: the replay comes from the context's inbox, keyed by tenant; a
+			// route without a tenant forwards to no context and never replays.
+			if route.Method == http.MethodPost && route.RequiresTenant() {
 				for code, node := range op.Responses {
 					answered := strings.HasPrefix(code, "2") || code == "422"
 					if _, marked := doc.response(t, node).Headers[api.ReplayedHeader]; answered && !marked {
@@ -163,5 +187,33 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 				t.Fatalf("%s responses = %v, want %v", route.Name, got, want)
 			}
 		})
+	}
+}
+
+// requireSecurity holds a route that demands a subject to bearerAuth, offered
+// alone or beside schemes that issue the same token, and a route that demands
+// nothing to an explicitly empty requirement, so no client sends a credential.
+func requireSecurity(t *testing.T, doc document, route kernelhttp.Route, op operation) {
+	t.Helper()
+	if !route.RequiresSubject() {
+		if op.Security == nil || len(op.Security) != 0 {
+			t.Fatalf("%s security = %v, want an explicit empty list", route.Name, op.Security)
+		}
+		return
+	}
+	bearer := false
+	for _, alternative := range op.Security {
+		if len(alternative) != 1 {
+			t.Fatalf("%s security alternative %v, want one scheme each", route.Name, alternative)
+		}
+		for name := range alternative {
+			if !doc.Components.SecuritySchemes[name].declared() {
+				t.Fatalf("%s security names %q, want a declared bearer or authorization code scheme", route.Name, name)
+			}
+			bearer = bearer || name == "bearerAuth"
+		}
+	}
+	if !bearer {
+		t.Fatalf("%s security = %v, want bearerAuth among the alternatives", route.Name, op.Security)
 	}
 }

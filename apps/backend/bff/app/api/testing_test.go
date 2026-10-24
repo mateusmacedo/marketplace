@@ -217,6 +217,7 @@ type setup struct {
 	authenticator   ports.Authenticator
 	draining        func() bool
 	clock           obsclock.Clock
+	tokenIssuer     api.TokenIssuer
 }
 
 type option func(*setup)
@@ -242,6 +243,9 @@ func withAuthenticator(a ports.Authenticator) option { return func(s *setup) { s
 func withDraining(draining func() bool) option { return func(s *setup) { s.draining = draining } }
 
 func withClock(c obsclock.Clock) option { return func(s *setup) { s.clock = c } }
+
+// withTokenIssuer mounts the development token route over issuer.
+func withTokenIssuer(issuer api.TokenIssuer) option { return func(s *setup) { s.tokenIssuer = issuer } }
 
 func newFixture(t *testing.T, options ...option) fixture {
 	t.Helper()
@@ -294,6 +298,7 @@ func newFixture(t *testing.T, options ...option) fixture {
 		Ready:           cfg.ready,
 		Draining:        cfg.draining,
 		Clock:           cfg.clock,
+		TokenIssuer:     cfg.tokenIssuer,
 	}
 	handler, err := api.NewHandler(rpc.NewTenancy(tenancyConn), ctrl, nil, handlerOptions)
 	if err != nil {

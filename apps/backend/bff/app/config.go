@@ -21,6 +21,10 @@ var (
 	// ErrInsecureNotDeclared refuses a clear-text dial that no one asked for:
 	// without a CA file, GRPC_INSECURE has to say so explicitly.
 	ErrInsecureNotDeclared = errors.New("bff: no CA file and GRPC_INSECURE is not set")
+
+	// ErrTokenWithoutIssuer refuses the development token route without an
+	// issuer to exchange the credentials at: the mock verifies no password.
+	ErrTokenWithoutIssuer = errors.New("bff: AUTH_TOKEN_CLIENT_ID requires OIDC_ISSUER")
 )
 
 const (
@@ -37,6 +41,7 @@ const (
 	envTenancyContractPath = "OPENAPI_TENANCY_PATH"
 	envDrainDelay          = "DRAIN_DELAY"
 	envRedisURL            = "REDIS_URL"
+	envTokenClientID       = "AUTH_TOKEN_CLIENT_ID"
 )
 
 type Config struct {
@@ -73,6 +78,10 @@ type Config struct {
 
 	Auth  authn.Config
 	Redis redis.Config
+
+	// TokenClientID is the public client POST /auth/token exchanges a user's
+	// password for; empty, the route does not exist. Development only.
+	TokenClientID string
 }
 
 func Defaults() Config {
@@ -104,6 +113,7 @@ func FromEnv(lookup func(string) string) (Config, error) {
 	cfg.CORSOrigins = envconfig.SplitList(lookup(envCORSOrigins))
 	cfg.MetricTenants = envconfig.SplitList(lookup(envMetricTenants))
 	cfg.TenancyContractPath = lookup(envTenancyContractPath)
+	cfg.TokenClientID = lookup(envTokenClientID)
 
 	var err error
 	if cfg.GRPCInsecure, err = envconfig.ParseBool(envGRPCInsecure, lookup(envGRPCInsecure)); err != nil {
@@ -135,8 +145,8 @@ func FromEnv(lookup func(string) string) (Config, error) {
 // would refuse, the public and the administration routes on one port, a missing
 // context target, no transport policy (TLS through a trusted authority or the
 // explicit development opt-out, GRP-15), a route budget the deadline package
-// refuses, no way of verifying identity, or no deny-list to consult before
-// accepting a token.
+// refuses, no way of verifying identity, no deny-list to consult before
+// accepting a token, or a development token route without an issuer.
 func (c Config) Validate() error {
 	for _, listen := range [][2]string{{envHTTPAddr, c.HTTPAddr}, {envAdminAddr, c.AdminAddr}} {
 		if _, _, err := net.SplitHostPort(listen[1]); err != nil {
@@ -159,6 +169,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Auth.Validate(); err != nil {
 		return err
+	}
+	if c.TokenClientID != "" && c.Auth.Issuer == "" {
+		return ErrTokenWithoutIssuer
 	}
 	return validateRedis(c.Redis)
 }

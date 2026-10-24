@@ -4,7 +4,8 @@
 # WHY: infra/ é saída do dmpf-plugin (ADR-011), então o que é do marketplace mora
 # aqui, na borda que verifica o token. Cada chamada do kcadm.sh sobe uma JVM: o
 # script lê cada lista uma vez. Nunca rodar no hmg: o client marketplace-dev
-# aceita senha direto no endpoint de token.
+# aceita senha direto no endpoint de token e o login do Swagger UI local sem
+# PKCE. O converged.sh confere pelo HTTP o mesmo estado que as pós-condições.
 set -euo pipefail
 
 : "${KEYCLOAK_URL:?KEYCLOAK_URL ausente}"
@@ -19,6 +20,8 @@ client=marketplace-dev
 audience=dmpf-bff
 roles=(tenancy:read tenancy:write)
 scopes=(basic acr roles profile email organization)
+swagger_port="${SWAGGER_PORT:-8082}"
+swagger_origins=("http://127.0.0.1:$swagger_port" "http://localhost:$swagger_port")
 config="$(mktemp)"
 body="$(mktemp)"
 trap 'rm -f "$config" "$body"' EXIT
@@ -97,11 +100,21 @@ ensure_single_membership() {
   contains "$current" "$org" || kc create "organizations/$org/members" -r "$realm" -b "\"$user\""
 }
 
+# WHY: o Swagger UI gerado (infra/local/compose/swagger-ui.yml) não liga o PKCE,
+# então o authorization code daqui aceita a troca sem code_verifier; o
+# webOrigins libera o POST do navegador ao endpoint de token.
 write_client() {
+  local origin redirects="" origins=""
+  for origin in "${swagger_origins[@]}"; do
+    redirects+="${redirects:+, }\"$origin/oauth2-redirect.html\""
+    origins+="${origins:+, }\"$origin\""
+  done
   cat >"$body" <<JSON
 {"clientId": "$client", "name": "Marketplace (desenvolvimento)", "enabled": true,
- "protocol": "openid-connect", "publicClient": true, "standardFlowEnabled": false,
+ "protocol": "openid-connect", "publicClient": true, "standardFlowEnabled": true,
  "implicitFlowEnabled": false, "directAccessGrantsEnabled": true, "serviceAccountsEnabled": false,
+ "redirectUris": [$redirects], "webOrigins": [$origins],
+ "attributes": {"pkce.code.challenge.method": ""},
  "fullScopeAllowed": true, "defaultClientScopes": [], "optionalClientScopes": []}
 JSON
 }
@@ -167,6 +180,7 @@ memberships="$(kc get "organizations/members/$user/organizations" -r "$realm" --
 user_roles="$(kc get-roles -r "$realm" --uid "$user" --effective --fields name --format csv --noquotes)"
 client_scopes="$(kc get "clients/$client_id/default-client-scopes" -r "$realm" --fields name --format csv --noquotes)"
 client_mappers="$(kc get "clients/$client_id/protocol-mappers/models" -r "$realm" --fields name --format csv --noquotes)"
+client_json="$(kc get "clients/$client_id" -r "$realm" --fields standardFlowEnabled,redirectUris,webOrigins)"
 
 grep -q "\"$tenant\"" <<<"$org_json" || fail "pós-condição falhou: tenant de $org_alias"
 [ "$memberships" = "$org" ] || fail "pós-condição falhou: $operator membro só de $org_alias"
@@ -177,4 +191,9 @@ for scope in "${scopes[@]}"; do
   contains "$client_scopes" "$scope" || fail "pós-condição falhou: $client com o scope $scope"
 done
 contains "$client_mappers" "$audience-audience" || fail "pós-condição falhou: $client com a audiência $audience"
+grep -q '"standardFlowEnabled" : true' <<<"$client_json" || fail "pós-condição falhou: $client com authorization code"
+for origin in "${swagger_origins[@]}"; do
+  grep -qF "\"$origin/oauth2-redirect.html\"" <<<"$client_json" || fail "pós-condição falhou: $client com o redirect de $origin"
+  grep -qF "\"$origin\"" <<<"$client_json" || fail "pós-condição falhou: $client com a origem $origin"
+done
 echo "seed-marketplace: realm $realm convergido"

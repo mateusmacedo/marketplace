@@ -19,6 +19,7 @@ Especificações: `docs/specs/SPEC-DXAWGZ43-platform.md` e
 | `GET /tenancy/store/{ref}` | idem | sujeito e tenant | `tenancy:read` |
 | `POST /tenancy/store/{ref}/suspend` | idem | sujeito, tenant e `Idempotency-Key` | `tenancy:write` |
 | `POST /tenancy/store/{ref}/reactivate` | idem | sujeito, tenant e `Idempotency-Key` | `tenancy:write` |
+| `POST /auth/token` (só com `AUTH_TOKEN_CLIENT_ID`) | `contract/openapi/v1/openapi.yaml` | `Idempotency-Key`, sem credencial | — |
 
 As rotas de `tenancy` chamam o `TenancyService` por gRPC (`TENANCY_GRPC_TARGET`,
 obrigatória) com transporte declarado: `GRPC_INSECURE=true` só em desenvolvimento,
@@ -41,6 +42,22 @@ lidos do contexto de execução que o `authn` montou. Recusas, com o corpo
 
 Toda rota passa por `Route.ValidateEdge()` na partida: uma rota que exige sujeito
 sem declarar permissão faz o processo sair com código 2.
+
+`POST /auth/token` existe só quando `AUTH_TOKEN_CLIENT_ID` está definida, o que
+acontece só em desenvolvimento (compose, `deploy/.env.example` e overlay `dev`);
+sem ela, a rota responde `404`. Ela recebe `{"username", "password"}` (sem campo
+extra, cada um não vazio, até 255 e 1024 caracteres), faz o password grant no
+endpoint de token do `OIDC_ISSUER` pelo client público da variável, com timeout
+de 1,5 s e um cliente HTTP reutilizado, e responde `200` com
+`{"access_token", "token_type": "Bearer", "expires_in"}` e `Cache-Control:
+no-store`. Recusas: corpo fora do contrato → `400`; credencial recusada pelo
+Keycloak → `401 invalid-credentials`; Keycloak fora ou sem token → `503
+unavailable`; sem resposta a tempo → `504 deadline-exceeded`. A resposta do
+Keycloak nunca chega ao chamador, e a senha e o token não entram no access log nem
+no span. A rota declara `RequireNeither` (o kernel exige junto o alcance
+`ReachAllTenants`, que só vale em rota com sujeito, então ela não lê dado de
+tenant) e, como todo `POST` da borda (RST-02), exige `Idempotency-Key`; repetir a
+chave só emite outro token.
 
 ## Saúde
 
@@ -69,6 +86,7 @@ administração, e o `/readyz` só cai para `503` no `SIGTERM`.
 | `OIDC_ISSUER` | api, session-events | issuer do Keycloak |
 | `OIDC_AUDIENCE` | api | audiência exigida no token |
 | `OIDC_TENANT_CLAIM` | api | claim do tenant (`organization.*.tenant_id`) |
+| `AUTH_TOKEN_CLIENT_ID` | api | client público do password grant de `POST /auth/token`, só em desenvolvimento; exige `OIDC_ISSUER` |
 | `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, só nas suítes de teste; exclusivo com `OIDC_ISSUER` |
 | `REDIS_URL` | api, session-events | deny-list de revogação (usuário ACL restrito a `~dmpf:revocation:*`) |
 | `OIDC_REVOCATION_TIMEOUT_MS` | api | prazo da consulta à deny-list; estouro recusa o token |
@@ -91,8 +109,8 @@ O `deploy/.env.example` é também o manifesto de telemetria que o
 ```bash
 pnpm nx run bff:deploy-env         # copia deploy/.env.example para deploy/.env
 pnpm nx run bff:redis-up           # Redis do compose local
+pnpm nx run bff:keycloak-up        # Keycloak do compose; roda o seed só se o realm divergir
 pnpm nx run bff:serve              # sobe Redis, Keycloak e seed (keycloak-up) e o tenancy; API em 127.0.0.1:8080, admin em 127.0.0.1:8090
-pnpm nx run bff:operator-token     # token do operador para o Swagger e o curl
 pnpm nx run bff:serve-session-events
 ```
 
@@ -123,8 +141,10 @@ converge o realm `dmpf` para:
 - as realm roles `tenancy:read` e `tenancy:write`;
 - o usuário `operator`, senha `${KEYCLOAK_SEED_PASSWORD:-dmpf-dev-password}`,
   membro só da `marketplace` e com as duas roles;
-- o client público `marketplace-dev`, só com password grant, os scopes `profile`
-  e `organization` por padrão e a audiência `dmpf-bff`.
+- o client público `marketplace-dev`, com password grant e authorization code
+  (redirect `http://127.0.0.1:${SWAGGER_PORT:-8082}/oauth2-redirect.html` e o de
+  `localhost`, as duas origens no `webOrigins`, sem PKCE obrigatório), os scopes
+  `profile` e `organization` por padrão e a audiência `dmpf-bff`.
 
 Ele mora no `bff` porque é a borda que verifica o token: o client, a audiência e
 a claim de tenant são configuração dela. No compose roda como serviço
@@ -132,31 +152,40 @@ a claim de tenant são configuração dela. No compose roda como serviço
 `deploy/keycloak/`, contra o Keycloak do Component `infra/keycloak/dev`. O Job é
 imutável: um seed novo exige apagar o Job antes de aplicar.
 
-O password grant dispensa navegador, mas entrega a senha ao client; por isso o
-`marketplace-dev` existe só nesse seed, que nunca roda no `hmg`. Quem usa
-navegador segue com o `dmpf-portal` (PKCE).
+O password grant dispensa navegador, mas entrega a senha à borda, e o
+authorization code do Swagger UI gerado não usa PKCE; por isso o
+`marketplace-dev` existe só nesse seed, que nunca roda no `hmg`. O `dmpf-portal`
+(PKCE obrigatório) segue sendo o client de aplicações com navegador.
+
+O `keycloak-up` (e o `serve`, que depende dele) roda antes o
+`deploy/keycloak/converged.sh`: em menos de um segundo, só por HTTP, ele confere o
+token do operador pelo `marketplace-dev` (audiência, tenant, roles e scope), o
+CORS do endpoint de token e o redirect do Swagger nas duas origens. Convergido, o
+seed não roda; qualquer divergência dispara o seed, que continua idempotente.
+
+### Como obter o token
+
+Pela rota de desenvolvimento do `bff` (o token vale 300 s, o
+`accessTokenLifespan` do realm):
 
 ```bash
-pnpm nx run bff:operator-token                    # sobe Keycloak e seed (keycloak-up) e imprime o token
-bash apps/backend/bff/scripts/operator-token.sh   # imprime só o access token, com o Keycloak já no ar
-```
-
-O script usa `curl` e `jq` e lê `KEYCLOAK_URL` (padrão
-`http://keycloak.localhost:${KEYCLOAK_PORT:-8180}`), `KEYCLOAK_USERNAME` e
-`KEYCLOAK_SEED_PASSWORD`. O token vale 300 s (`accessTokenLifespan` do realm). No
-Swagger UI (`http://127.0.0.1:8082`), cole-o em **Authorize** → `bearerAuth`, sem
-o prefixo `Bearer`. Na linha de comando:
-
-```bash
-TOKEN="$(bash apps/backend/bff/scripts/operator-token.sh)"
+TOKEN="$(curl -s -X POST http://127.0.0.1:8080/auth/token \
+  -H 'Content-Type: application/json' -H "Idempotency-Key: token-$(date +%s)" \
+  -d '{"username":"operator","password":"dmpf-dev-password"}' | jq -r .access_token)"
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/me
 ```
+
+Pelo Swagger UI (`http://127.0.0.1:8082`): **Authorize** → `keycloak (OAuth2,
+authorizationCode)`, `client_id` `marketplace-dev`, `client_secret` vazio, marque
+o scope `openid` e entre como `operator` na tela do Keycloak. O token volta ao
+Swagger e vale para as rotas do `tenancy`. A outra opção é colar em `bearerAuth`,
+sem o prefixo `Bearer`, o token obtido pela rota.
 
 ## Targets Nx
 
 `tidy`, `fmt-check`, `vet`, `build`, `test-race`, `test-infra-up`,
 `test-infra-down`, `test-keycloak`, `govulncheck`, `serve`,
-`serve-session-events`, `deploy-env`, `redis-up`, `keycloak-up`, `operator-token`,
+`serve-session-events`, `deploy-env`, `redis-up`, `keycloak-up`,
 `docker:build`, `docker:run` e `k8s-render`. `lint`, `test` e `generate` vêm do
 `@nx-go/nx-go`. O `bff` não entra na release: ela cobre só libs e apps fora de Go.
 
