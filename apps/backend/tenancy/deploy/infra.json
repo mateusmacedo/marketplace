@@ -1,0 +1,42 @@
+{
+  "schema": "dmpf/infra@1",
+  "app": "tenancy",
+  "image": {
+    "env": "TENANCY_IMAGE",
+    "local": "tenancy:local"
+  },
+  "database": {
+    "passwordEnv": "TENANCY_PG_PASSWORD",
+    "local": "tenancy-local",
+    "dev": "tenancy-dev",
+    "migrator": {
+      "passwordEnv": "TENANCY_PG_MIGRATOR_PASSWORD",
+      "local": "tenancy-migrator-local",
+      "dev": "tenancy-migrator-dev"
+    }
+  },
+  "kafka": {
+    "passwordEnv": "KAFKA_TENANCY_PASSWORD",
+    "local": "tenancy-local",
+    "topics": [
+      {
+        "name": "tenancy.events",
+        "env": "KAFKA_TENANCY_TOPIC"
+      },
+      {
+        "name": "tenancy.events.dlq",
+        "env": "KAFKA_TENANCY_DLQ"
+      }
+    ],
+    "acls": [
+      {
+        "operations": ["write", "describe"],
+        "topics": ["tenancy.events", "tenancy.events.dlq"]
+      }
+    ]
+  },
+  "grpc": {
+    "server": "dmpf-tenancy-api"
+  },
+  "openapi": true
+}
