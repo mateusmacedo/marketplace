@@ -152,3 +152,28 @@ Registrado pela SPEC-XB4NCW4J (DEVS-144), com o primeiro bounded context,
   `dmpf-portal`, com PKCE, segue sendo o client de quem usa navegador. A API do
   `bff` no compose passa a depender do profile `keycloak`; sem ele, ela não passa
   da descoberta OIDC.
+- **Desvio do DMPF: rota de token só em desenvolvimento.** O `bff` ganha
+  `POST /auth/token`, que troca usuário e senha por um access token pelo password
+  grant (RFC 6749 §4.3) no endpoint de token do `OIDC_ISSUER`, com o client
+  público de `AUTH_TOKEN_CLIENT_ID`. A borda do DMPF só verifica token e não
+  emite; a rota existe porque o ambiente de desenvolvimento precisa de um token de
+  operador sem navegador (curl, testes manuais) e o seed gerado não oferece um.
+  Para conter o desvio: a rota só é montada com `AUTH_TOKEN_CLIENT_ID`, ligada
+  apenas no compose local, no `deploy/.env.example` e no overlay `dev` (nunca na
+  base nem no `hmg`); a variável sem `OIDC_ISSUER` recusa a partida; a resposta do
+  Keycloak nunca chega ao chamador; e a senha e o token ficam fora do access log e
+  do span. A rota declara `RequireNeither`, que o kernel só aceita com
+  `ReachAllTenants`; como o `WithVerifiedPlatformReach` só concede alcance a rota
+  com sujeito, nenhum dado de tenant fica ao alcance dela. Como todo `POST` de
+  borda (RST-02), ela exige `Idempotency-Key`. Ela substitui o script
+  `operator-token.sh` e o target `operator-token`.
+- **OAuth2 no Swagger.** O OpenAPI do `tenancy` declara, ao lado do `bearerAuth`,
+  o esquema `keycloak` (`oauth2`, authorization code no realm `dmpf` em
+  `http://keycloak.localhost:8180`, scope `openid`), oferecido como alternativa em
+  cada operação. O Swagger UI gerado (`infra/local/compose/swagger-ui.yml`) não
+  liga PKCE, e `infra/` não muda à mão; por isso o seed complementar habilita o
+  authorization code no `marketplace-dev` sem PKCE obrigatório, com os redirects
+  `oauth2-redirect.html` e o `webOrigins` das duas origens do Swagger local. O
+  `dmpf-portal`, com PKCE, segue sendo o client de aplicações com navegador. O
+  `keycloak-up` pula o seed quando uma checagem por HTTP
+  (`deploy/keycloak/converged.sh`) confirma o realm convergido.
