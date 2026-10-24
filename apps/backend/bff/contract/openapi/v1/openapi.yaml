@@ -20,6 +20,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/AssertedTenant'
         - $ref: '#/components/parameters/AssertedSubject'
         - $ref: '#/components/parameters/AssertedTenantQuery'
@@ -33,6 +34,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -55,6 +58,15 @@ components:
       description: Correlation of the request; a malformed value is replaced by one the edge mints.
       schema:
         type: string
+        maxLength: 128
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional on a read; when present it must have the accepted form, or the request is refused with invalid-idempotency-key.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
         maxLength: 128
     AssertedTenant:
       name: X-Tenant-ID
@@ -106,6 +118,12 @@ components:
           type: string
           description: Human-readable reason, never carrying internal detail.
   responses:
+    InvalidRequest:
+      description: The request carries an Idempotency-Key outside the accepted form (code invalid-idempotency-key).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
     Unauthenticated:
       description: No credential, or one that is invalid, expired or revoked (code unauthenticated).
       content:

@@ -100,12 +100,18 @@ func FromEnv(lookup func(string) string) (Config, error) {
 	return cfg, nil
 }
 
-// Validate refuses a start the edge could not serve: a health address the
-// probe cannot reach, a route budget the deadline package refuses, no way of
-// verifying identity, or no deny-list to consult before accepting a token.
+// Validate refuses a start the edge could not serve: an address net.Listen
+// would refuse, the public and the administration routes on one port, a route
+// budget the deadline package refuses, no way of verifying identity, or no
+// deny-list to consult before accepting a token.
 func (c Config) Validate() error {
-	if _, _, err := net.SplitHostPort(c.AdminAddr); err != nil {
-		return fmt.Errorf("%w: %s=%q is not host:port", ErrInvalidVariable, envAdminAddr, c.AdminAddr)
+	for _, listen := range [][2]string{{envHTTPAddr, c.HTTPAddr}, {envAdminAddr, c.AdminAddr}} {
+		if _, _, err := net.SplitHostPort(listen[1]); err != nil {
+			return fmt.Errorf("%w: %s=%q is not host:port", ErrInvalidVariable, listen[0], listen[1])
+		}
+	}
+	if c.HTTPAddr == c.AdminAddr && !ephemeral(c.HTTPAddr) {
+		return fmt.Errorf("%w: %s and %s share %q", ErrInvalidVariable, envHTTPAddr, envAdminAddr, c.HTTPAddr)
 	}
 	if err := c.RouteBudget.Validate(); err != nil {
 		return err

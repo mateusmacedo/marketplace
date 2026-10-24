@@ -109,6 +109,30 @@ func TestFromEnvReadsTheAdministrationAddress(t *testing.T) {
 	}
 }
 
+func TestFromEnvReadsThePublicAddress(t *testing.T) {
+	base := withRequired(devMock, "true")
+
+	cfg, err := app.FromEnv(lookup(append(base, "HTTP_ADDR", "127.0.0.1:9000")...))
+	if err != nil || cfg.HTTPAddr != "127.0.0.1:9000" {
+		t.Fatalf("FromEnv() = %q, %v; want 127.0.0.1:9000", cfg.HTTPAddr, err)
+	}
+	if _, err := app.FromEnv(lookup(append(base, "HTTP_ADDR", "8090")...)); !errors.Is(err, app.ErrInvalidVariable) || !strings.Contains(err.Error(), "HTTP_ADDR") {
+		t.Fatalf("FromEnv(HTTP_ADDR=8090) = %v, want ErrInvalidVariable naming HTTP_ADDR: a start refused by net.Listen is a configuration error", err)
+	}
+}
+
+func TestFromEnvRefusesThePublicAndTheAdministrationOnOnePort(t *testing.T) {
+	base := withRequired(devMock, "true")
+
+	_, err := app.FromEnv(lookup(append(base, "HTTP_ADDR", "127.0.0.1:9100", "ADMIN_ADDR", "127.0.0.1:9100")...))
+	if !errors.Is(err, app.ErrInvalidVariable) || !strings.Contains(err.Error(), "HTTP_ADDR") || !strings.Contains(err.Error(), "ADMIN_ADDR") {
+		t.Fatalf("FromEnv() = %v, want the shared port refused naming HTTP_ADDR and ADMIN_ADDR", err)
+	}
+	if _, err := app.FromEnv(lookup(append(base, "HTTP_ADDR", "127.0.0.1:0", "ADMIN_ADDR", "127.0.0.1:0")...)); err != nil {
+		t.Fatalf("FromEnv() with two ephemeral ports = %v, want nil: each listener gets its own port", err)
+	}
+}
+
 func TestFromEnvReadsNoLegacyTelemetryVariable(t *testing.T) {
 	cfg, err := app.FromEnv(lookup(withRequired(devMock, "true",
 		"SERVICE", "legacy", "SERVICE_VERSION", "9.9.9", "INSTANCE_ID", "legacy-1", "OTLP_ENDPOINT", "legacy:4317", "OTLP_INSECURE", "not-a-bool")...))

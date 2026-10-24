@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mateusmacedo/dmpf/libs/backend/go/ports"
 	"gopkg.in/yaml.v3"
 
 	"github.com/mateusmacedo/marketplace/apps/backend/bff/app/api"
@@ -34,6 +35,10 @@ type parameter struct {
 	Name     string `yaml:"name"`
 	In       string `yaml:"in"`
 	Required bool   `yaml:"required"`
+	Schema   struct {
+		Pattern   string `yaml:"pattern"`
+		MaxLength int    `yaml:"maxLength"`
+	} `yaml:"schema"`
 }
 
 func loadDocument(t *testing.T, file string) document {
@@ -60,7 +65,7 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 	// WHY: every refusal the edge answers for an authenticated route is in the
 	// contract, so a generated client reads each one as Rejection.
 	statuses := map[string][]string{
-		"me": {"200", "401", "403", "429", "default"},
+		"me": {"200", "400", "401", "403", "429", "default"},
 	}
 	routes := api.Routes(routeBudget)
 	if len(routes) == 0 {
@@ -100,6 +105,15 @@ func TestTheContractDeclaresEveryRouteTheEdgeServes(t *testing.T) {
 			}
 			if correlation, ok := byName[api.CorrelationHeader]; !ok || correlation.In != "header" || correlation.Required {
 				t.Fatalf("%s: %s must be an optional header, got %+v", route.Name, api.CorrelationHeader, correlation)
+			}
+			// WHY: every route validates a key the client sends, a GET included,
+			// so the contract declares the header and the 400 it answers.
+			key, ok := byName[api.IdempotencyHeader]
+			if !ok || key.In != "header" || key.Required != (route.IdempotencyKey != "") {
+				t.Fatalf("%s: %s must be a header, required only where the route declares it, got %+v", route.Name, api.IdempotencyHeader, key)
+			}
+			if key.Schema.Pattern != ports.IdempotencyKeyPattern || key.Schema.MaxLength != 128 {
+				t.Fatalf("%s: %s schema = %+v, want pattern %s and maxLength 128 (IDM-02)", route.Name, api.IdempotencyHeader, key.Schema, ports.IdempotencyKeyPattern)
 			}
 
 			var got []string
