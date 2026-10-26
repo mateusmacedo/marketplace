@@ -86,6 +86,7 @@ administração, e o `/readyz` só cai para `503` no `SIGTERM`.
 | `OIDC_ISSUER` | api, session-events | issuer do Keycloak |
 | `OIDC_AUDIENCE` | api | audiência exigida no token |
 | `OIDC_TENANT_CLAIM` | api | claim do tenant (`organization.*.tenant_id`) |
+| `OIDC_PERMISSION_CLAIMS` | api | claims das permissões: `scope`, as realm roles e as client roles de `marketplace-store` dentro de `organization.*` (só no tenant da loja) |
 | `AUTH_TOKEN_CLIENT_ID` | api | client público do password grant de `POST /auth/token`, só em desenvolvimento; exige `OIDC_ISSUER` |
 | `AUTH_DEV_MOCK` | api | identidade lida do próprio Bearer, sem verificação nem consulta à deny-list, só nas suítes de teste; exclusivo com `OIDC_ISSUER` |
 | `REDIS_URL` | api, session-events | deny-list de revogação (usuário ACL restrito a `~dmpf:revocation:*`) |
@@ -138,19 +139,60 @@ converge o realm `dmpf` para:
 
 - a Organization `marketplace`, com o atributo `tenant_id=["marketplace"]`, o
   tenant do operador (`TENANCY_OPERATOR_TENANT` do `tenancy`);
-- as realm roles `tenancy:read` e `tenancy:write`;
+- as realm roles `tenancy:read`, `tenancy:write`, `iam:read`, `iam:write` e
+  `iam:buyer`;
 - o usuário `operator`, senha `${KEYCLOAK_SEED_PASSWORD:-dmpf-dev-password}`,
-  membro só da `marketplace` e com as duas roles;
+  membro só da `marketplace`, com as quatro roles do operador e no grupo de realm
+  `operators`;
 - o client público `marketplace-dev`, com password grant e authorization code
   (redirect `http://127.0.0.1:${SWAGGER_PORT:-8082}/oauth2-redirect.html` e o de
   `localhost`, as duas origens no `webOrigins`, sem PKCE obrigatório), os scopes
-  `profile` e `organization` por padrão e a audiência `dmpf-bff`.
+  `profile` e `organization` por padrão e a audiência `dmpf-bff`;
+- o comprador `buyer-demo`, sem Organization e com `iam:buyer`, e o client público
+  `marketplace-buyer`, cujo claim fixo `organization.marketplace.tenant_id` dá ao
+  comprador o tenant do operador;
+- o client confidencial `marketplace-store`, sem fluxo de login, dono das 16 client
+  roles do catálogo de permissões de loja da SPEC-2FJ0KYKV e de nenhuma outra (o
+  seed exclui a role fora do catálogo);
+- a Organization `loja-demo` (`tenant_id=["loja-demo"]`), o grupo `owner` dela com
+  as 16 roles e o usuário `loja-demo-owner`, membro só dela e do grupo;
+- o client público `marketplace-seller`, sem o scope `roles` e com o mapper
+  `organization-groups` (`addGroupRoleMappings`), que leva as roles do grupo para
+  `organization.<alias>.resource_access.marketplace-store.roles` só no token do
+  lojista; o login pede `scope=openid organization:<alias>`;
+- o client confidencial `iam-admin`, só com service account e o segredo de
+  `KEYCLOAK_IAM_ADMIN_SECRET`, que o adaptador do `iam` usa na Admin API;
+- o grupo de realm `operators`, com as contas que a service account do `iam`
+  não pode gerir: o `operator` e as service accounts do `iam-admin` e do
+  `dmpf-session-events`.
+
+A service account do `iam` tem exatamente estes papéis de `realm-management`, todos
+de leitura (`query-organizations`, `view-organizations`, `view-users`, `view-realm`,
+`view-clients`); o seed tira qualquer outro. O que ela altera vem do FGAP v2, que
+o seed liga no realm. Ela cria usuários, gere membros e grupos das lojas, mapeia as
+roles de `marketplace-store` e concede `iam:buyer`; recebe `403` ao conceder outra
+realm role, mexer na Organization `marketplace`, gerir clients e, pelos denies do
+grupo `operators` e das contas dele, ao trocar a senha, desabilitar, mover ou
+mapear roles do operador e das service accounts, ela mesma incluída. `manage-users`
+e `manage-organizations` nunca voltam a ela: os dois liberam tudo antes do FGAP. O
+seed reescreve os denies a cada execução e cria os denies antes das concessões. O
+que o FGAP não fecha está em "Resultado dos spikes" na SPEC-2FJ0KYKV.
 
 Ele mora no `bff` porque é a borda que verifica o token: o client, a audiência e
 a claim de tenant são configuração dela. No compose roda como serviço
 `bff-keycloak-seed`; no overlay `dev`, como Job `bff-keycloak-seed` do Component
 `deploy/keycloak/`, contra o Keycloak do Component `infra/keycloak/dev`. O Job é
-imutável: um seed novo exige apagar o Job antes de aplicar.
+imutável: um seed novo exige apagar o Job antes de aplicar. O segredo do
+`iam-admin` vem do Secret `keycloak-iam-admin` (chave `secret`), sem default, que
+precisa existir antes do Job:
+
+```bash
+kubectl create secret generic keycloak-iam-admin --from-literal=secret="$(openssl rand -hex 24)"
+kubectl delete job bff-keycloak-seed --ignore-not-found
+kubectl apply -k apps/backend/bff/deploy/k8s/overlays/dev
+```
+
+No compose, o `bff-keycloak-seed` usa `${KEYCLOAK_IAM_ADMIN_SECRET:-dmpf-dev-iam-admin}`.
 
 O password grant dispensa navegador, mas entrega a senha à borda, e o
 authorization code do Swagger UI gerado não usa PKCE; por isso o
@@ -160,8 +202,16 @@ authorization code do Swagger UI gerado não usa PKCE; por isso o
 O `keycloak-up` (e o `serve`, que depende dele) roda antes o
 `deploy/keycloak/converged.sh`: em menos de um segundo, só por HTTP, ele confere o
 token do operador pelo `marketplace-dev` (audiência, tenant, roles e scope), o
-CORS do endpoint de token e o redirect do Swagger nas duas origens. Convergido, o
-seed não roda; qualquer divergência dispara o seed, que continua idempotente.
+CORS do endpoint de token, o redirect do Swagger nas duas origens, o token do
+comprador (tenant `marketplace` e `iam:buyer`), o do dono da `loja-demo` (tenant
+da loja e as 16 roles), o client credentials do `iam-admin` e, com o token dele, o
+marcador do `seed.sh` atual, o FGAP ligado com as permissões do seed, os papéis
+da service account e as contas do grupo `operators`. O marcador é o digest do
+`seed.sh`, gravado no client `iam-admin` só depois das pós-condições: um script
+alterado ou uma execução interrompida fazem o seed rodar de novo. Convergido, o
+seed não roda; qualquer divergência dispara o seed, que é idempotente: lê o que
+existe, cria o que falta e reescreve clients, mappers, senhas e os denies do FGAP
+(cerca de 86 chamadas do `kcadm.sh`, de 50 a 70 s conforme a máquina).
 
 ### Como obter o token
 
@@ -199,7 +249,12 @@ sem o prefixo `Bearer`, o token obtido pela rota.
   `scripts/test-keycloak.sh` sobe o Keycloak e o Redis, aplica o seed e os derruba
   ao final, mesmo com falha. Cobre a `alice` do seed recebendo `200`, o logout
   virando `401 session_revoked` dentro do intervalo do `session-events` e o Redis
-  parado virando `401`. Roda só localmente: o `dmpf-ci.yml` não sobe o Keycloak.
+  parado virando `401`. Sobre o realm gerado, aplica também o
+  `deploy/keycloak/seed.sh` (segredo `${KEYCLOAK_IAM_ADMIN_SECRET:-dmpf-test-iam-admin}`),
+  e o `app/keycloak_iam_test.go` cobre o comprador com o tenant do operador, as
+  roles da loja restritas ao tenant e ao client do lojista e a service account do
+  `iam` gerindo a loja sem alcançar o operador nem as service accounts. Roda só localmente: o
+  `dmpf-ci.yml` não sobe o Keycloak.
 
 ## Kubernetes
 

@@ -12,6 +12,7 @@ data:
   OIDC_ISSUER: http://keycloak:8080/realms/dmpf
   OIDC_AUDIENCE: dmpf-bff
   OIDC_TENANT_CLAIM: organization.*.tenant_id
+  OIDC_PERMISSION_CLAIMS: scope,realm_access.roles,organization.*.resource_access.marketplace-store.roles
   # Liga o POST /auth/token pelo client marketplace-dev do seed. Só neste
   # overlay: o hmg e a base nunca declaram a variável.
   AUTH_TOKEN_CLIENT_ID: marketplace-dev
