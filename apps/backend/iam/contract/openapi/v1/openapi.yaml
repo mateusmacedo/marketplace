@@ -1,0 +1,1335 @@
+openapi: 3.1.0
+info:
+  title: IAM — iam bounded context
+  version: 1.0.0
+  description: >-
+    Public REST edge of the iam context, served by apps/backend/bff, which
+    calls the iam context over gRPC (ADR-044). Roles, invitations and members
+    live in the tenant of a store, where a caller resolved to the operator is
+    refused; buyers live in the tenant of the operator, where a caller resolved
+    to a store is refused. The context decides the access and projects it into
+    Keycloak, so a change reaches the token of the member or the buyer only
+    after the projection and the next token renewal. Every route of the service
+    references one operation of this document (RST-04). Writes are idempotent by
+    Idempotency-Key (RST-02); reads run outside any transaction (UOW-11). The
+    contract is not covered by the Buf gates.
+servers:
+  - url: http://localhost:8080
+    description: local bff
+security:
+  - bearerAuth: []
+  - keycloak: [openid]
+paths:
+  /iam/ownership/claim:
+    post:
+      operationId: claimOwnership
+      summary: Claim the ownership of the store as the subject of the token
+      description: >-
+        Establishes the membership of the subject of the token with the reserved
+        role owner. Only the owner seeded in Keycloak reaches this route before
+        the store has members; once the store has an owner, another subject is
+        refused with iam/membership/owner-claimed, and the owner claiming again
+        changes nothing. The body carries no subject.
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '201':
+          description: Ownership claimed, or already held by this subject
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/role:
+    post:
+      operationId: defineRole
+      summary: Define a role of the store (idempotent by ref)
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefineRoleRequest'
+      responses:
+        '201':
+          description: Role defined, or already defined under this ref
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+    get:
+      operationId: findRolesByStatus
+      summary: List the roles of the store in one status
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/RoleStatusQuery'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Roles in the status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoleView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/role/{ref}:
+    get:
+      operationId: findRole
+      summary: Read the observable state of a role of the store
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/RoleRef'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Current snapshot of the role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/role/{ref}/permissions:
+    post:
+      operationId: changeRolePermissions
+      summary: Replace the permissions of an active role
+      description: >-
+        The members of the role keep their memberships; the new permissions
+        reach their tokens once the group of the role is projected into
+        Keycloak. The same set changes nothing.
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/RoleRef'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePermissionsRequest'
+      responses:
+        '200':
+          description: Permissions replaced, or already equal to the set
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/role/{ref}/retire:
+    post:
+      operationId: retireRole
+      summary: Retire an active role, which stops granting permissions
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/RoleRef'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Role retired
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/invitation:
+    post:
+      operationId: inviteMember
+      summary: Invite an e-mail to the store with roles (idempotent by e-mail)
+      description: >-
+        A pending invitation of the same e-mail changes nothing; a failed or
+        provisioned one is reopened in a new round with the roles of the
+        request. The invitation is provisioned in Keycloak asynchronously, and
+        the membership is established once Keycloak returns the subject.
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+      responses:
+        '201':
+          description: Invitation pending, opened now or before
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+    get:
+      operationId: findInvitationsByStatus
+      summary: List the invitations of the store in one status
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/InvitationStatusQuery'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Invitations in the status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvitationView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/invitation/{email}:
+    get:
+      operationId: findInvitation
+      summary: Read the observable state of an invitation of the store
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/InvitationEmail'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Current snapshot of the invitation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/member:
+    get:
+      operationId: findMembershipsByStatus
+      summary: List the members of the store in one status
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/MembershipStatusQuery'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Members in the status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MembershipView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/member/{subject}:
+    get:
+      operationId: findMembership
+      summary: Read the observable state of a member of the store
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Current snapshot of the membership
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/member/{subject}/grant-role:
+    post:
+      operationId: grantRole
+      summary: Grant a role to an active member
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberRoleRequest'
+      responses:
+        '200':
+          description: Role granted, or already held
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/member/{subject}/revoke-role:
+    post:
+      operationId: revokeRole
+      summary: Revoke a role from an active member, never the last one nor owner
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberRoleRequest'
+      responses:
+        '200':
+          description: Role revoked
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/member/{subject}/remove:
+    post:
+      operationId: removeMember
+      summary: Remove an active member that is not the owner from the store
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Member removed
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/buyer:
+    post:
+      operationId: registerBuyer
+      summary: Register the subject of the token as a buyer (idempotent by subject)
+      description: >-
+        Registering again changes nothing, the name included, and keeps a
+        blocked buyer blocked. The body carries no subject. The permission
+        iam:buyer reaches the token after the projection and the next renewal.
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuyerProfileRequest'
+      responses:
+        '201':
+          description: Buyer registered, or already registered under this subject
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+    get:
+      operationId: findBuyersByStatus
+      summary: List the buyers in one status
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/BuyerStatusQuery'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Buyers in the status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BuyerView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/buyer/me:
+    get:
+      operationId: findMyBuyer
+      summary: Read the buyer of the subject of the token
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Current snapshot of the buyer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/buyer/me/profile:
+    post:
+      operationId: updateMyBuyerProfile
+      summary: Update the profile of the active buyer of the subject of the token
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuyerProfileRequest'
+      responses:
+        '200':
+          description: Profile updated
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/buyer/{subject}:
+    get:
+      operationId: findBuyer
+      summary: Read the observable state of a buyer
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKeyOnRead'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Current snapshot of the buyer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/buyer/{subject}/block:
+    post:
+      operationId: blockBuyer
+      summary: Take the permission to buy from an active buyer, with a reason
+      description: >-
+        The user stays enabled in Keycloak, so the same person can keep
+        operating a store; the permission iam:buyer leaves the token at the
+        next renewal, and open sessions are not revoked.
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockRequest'
+      responses:
+        '200':
+          description: Buyer blocked
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+  /iam/buyer/{subject}/unblock:
+    post:
+      operationId: unblockBuyer
+      summary: Give the permission to buy back to a blocked buyer
+      security:
+        - bearerAuth: []
+        - keycloak: [openid]
+      parameters:
+        - $ref: '#/components/parameters/Subject'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationID'
+      responses:
+        '200':
+          description: Buyer unblocked
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          $ref: '#/components/responses/Rejected'
+        '429':
+          $ref: '#/components/responses/AdmissionRefused'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+        default:
+          $ref: '#/components/responses/Failure'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Access token do servidor de autorização que o BFF verifica (OIDC). As
+        rotas de papel, convite e membro exigem iam:write nos comandos e
+        iam:read nas consultas, como permissão da loja
+        (organization.<alias>.resource_access.marketplace-store.roles), e o
+        tenant resolvido precisa ser uma loja; o operador é recusado. As rotas
+        de comprador estão no tenant do operador, e a loja é recusada: POST
+        /iam/buyer exige o scope profile, /iam/buyer/me exige iam:buyer, e as
+        demais exigem iam:read ou iam:write do operador. O sujeito de
+        ClaimOwnership, de RegisterBuyer e de /iam/buyer/me é sempre o do
+        token.
+    keycloak:
+      type: oauth2
+      description: >-
+        Login no Keycloak do compose local (realm dmpf), só em desenvolvimento.
+        No Authorize do Swagger UI, informe o client_id da jornada e deixe o
+        client_secret vazio (clients públicos, sem PKCE obrigatório):
+        marketplace-seller para as rotas de papel, convite e membro, com a loja
+        escolhida no login (scope organization:<alias>) por quem é membro de
+        mais de uma; marketplace-buyer para POST /iam/buyer e /iam/buyer/me; e
+        marketplace-dev para as demais rotas de comprador, do operador. O access
+        token emitido é o mesmo que o bearerAuth aceita.
+      flows:
+        authorizationCode:
+          authorizationUrl: http://keycloak.localhost:8180/realms/dmpf/protocol/openid-connect/auth
+          tokenUrl: http://keycloak.localhost:8180/realms/dmpf/protocol/openid-connect/token
+          scopes:
+            openid: Sessão OpenID Connect do usuário
+  parameters:
+    RoleRef:
+      name: ref
+      in: path
+      required: true
+      description: >-
+        Reference of a role of the store and name of its group in the
+        Organization of the store. A ref outside this form is refused with 400.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 63
+        pattern: '^[a-z0-9][a-z0-9-]*[a-z0-9]$'
+    InvitationEmail:
+      name: email
+      in: path
+      required: true
+      description: >-
+        The invited address as the invitation keeps it: trimmed, in lower case
+        and without control characters, so another spelling finds nothing. An
+        address outside this form is refused with 400.
+      schema:
+        type: string
+        maxLength: 254
+        pattern: '^[^@\u0000-\u001F\u007F-\u009F]+@[^@\u0000-\u001F\u007F-\u009F]*\.[^@\u0000-\u001F\u007F-\u009F]*$'
+    Subject:
+      name: subject
+      in: path
+      required: true
+      description: >-
+        The subject of the user in Keycloak (the sub claim of its token): 1 to
+        255 characters without control characters. A subject outside this form
+        is refused with 400.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+        pattern: '^[^\u0000-\u001F\u007F-\u009F]+$'
+    RoleStatusQuery:
+      name: status
+      in: query
+      required: true
+      description: Filter the roles by status
+      schema:
+        type: string
+        enum: [active, retired]
+    InvitationStatusQuery:
+      name: status
+      in: query
+      required: true
+      description: Filter the invitations by status
+      schema:
+        type: string
+        enum: [pending, provisioned, failed]
+    MembershipStatusQuery:
+      name: status
+      in: query
+      required: true
+      description: Filter the members by status
+      schema:
+        type: string
+        enum: [active, removed]
+    BuyerStatusQuery:
+      name: status
+      in: query
+      required: true
+      description: Filter the buyers by status
+      schema:
+        type: string
+        enum: [active, blocked]
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Client-chosen key that makes the POST idempotent (RST-02, FND-04 §7.6).
+        A POST without it, or with a key outside this format, is refused with
+        400 before any call to the context. The edge scopes the key to the
+        authenticated subject. Within 24h, the same key with the same request
+        answers the stored response, marked by the Idempotent-Replayed header;
+        with another request it is refused with 422 reused-idempotency-key, and
+        while the first request is still in progress with 409
+        in-flight-idempotency-key.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+    IdempotencyKeyOnRead:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Optional on a read, which has no effect to deduplicate; when present it
+        must have the accepted form, or the request is refused with 400
+        invalid-idempotency-key before any call to the context.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+    CorrelationID:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: >-
+        Correlation of the whole chain the request starts (ENV-08). When
+        absent or outside this shape the edge mints one.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]+$'
+  schemas:
+    DefineRoleRequest:
+      type: object
+      required: [ref, name, permissions]
+      additionalProperties: false
+      properties:
+        ref:
+          type: string
+          description: >-
+            3 to 63 characters of a-z, 0-9 and -, without a leading or trailing
+            hyphen, and never owner, which is reserved; the context refuses
+            any other form with iam/role/ref-invalid and owner with
+            iam/role/reserved. Defining a known ref again changes nothing, the
+            name and the permissions included.
+        name:
+          $ref: '#/components/schemas/Text'
+        permissions:
+          $ref: '#/components/schemas/Permissions'
+    ChangePermissionsRequest:
+      type: object
+      required: [permissions]
+      additionalProperties: false
+      properties:
+        permissions:
+          $ref: '#/components/schemas/Permissions'
+    Permissions:
+      type: array
+      maxItems: 32
+      description: >-
+        Permissions of the closed catalog: iam:read, iam:write, seller:read,
+        seller:write, catalog:read, catalog:write, inventory:read,
+        inventory:write, pricing:read, pricing:write, ordering:read,
+        ordering:write, fulfillment:read, fulfillment:write, settlement:read
+        and settlement:write. The context sorts them and drops repetitions,
+        refuses an empty list with iam/role/permissions-empty and a permission
+        outside the catalog with iam/role/permission-unknown. A request carries
+        at most 32 items of up to 32 characters each; more is refused with
+        400 before the context.
+      items:
+        type: string
+        maxLength: 32
+    InviteRequest:
+      type: object
+      required: [email, roles]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          description: >-
+            The request carries at most 254 characters as sent. The form is the
+            context's, judged after trimming: up to 254 characters with exactly
+            one @, a non-empty local part, a domain with at least one dot and no
+            control character; the context refuses any other form with
+            iam/invitation/email-invalid and keeps the address in lower case.
+        roles:
+          type: array
+          maxItems: 32
+          description: >-
+            Refs of roles, in the form of a role ref; the context sorts them and
+            drops repetitions, refuses an empty list with
+            iam/invitation/roles-empty, a ref outside the form with
+            iam/invitation/role-invalid and owner with
+            iam/invitation/role-reserved. A ref not yet defined, or retired,
+            grants no permission until it is defined. A request carries at most
+            32 refs of up to 63 characters each; more is refused with 400
+            before the context.
+          items:
+            type: string
+            maxLength: 63
+    MemberRoleRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          description: >-
+            Ref of a role, in the form of a role ref; the context refuses any
+            other form with iam/membership/role-invalid. owner is refused with
+            iam/membership/owner-reserved on a grant and with
+            iam/membership/owner-protected on a revocation.
+    BuyerProfileRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/Text'
+    BlockRequest:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          $ref: '#/components/schemas/Text'
+    Text:
+      type: string
+      description: >-
+        The name rule of the bookings context, applied to the name of a role
+        (unique per store by exact match), to the name of a buyer and to the
+        reason of a block. Up to 200 characters (Unicode code points) of valid
+        UTF-8. Refused characters: control (Unicode category Cc), format
+        (category Cf, such as U+200B, U+202E, U+2060, U+2066 to U+2069 and
+        U+FEFF), the line and paragraph separators U+2028 and U+2029, every
+        variation selector (U+FE00 to U+FE0F, U+E0100 to U+E01EF and the
+        Mongolian U+180B to U+180F) and the other default ignorable code points
+        (such as U+034F and the Hangul fillers U+115F, U+1160, U+3164 and
+        U+FFA0). At least one character must be neither Unicode white space
+        nor a combining mark (category M). The text is neither normalized nor
+        trimmed.
+      minLength: 1
+      maxLength: 200
+    RoleRefResponse:
+      type: object
+      required: [ref]
+      properties:
+        ref:
+          type: string
+    SubjectResponse:
+      type: object
+      required: [subject]
+      properties:
+        subject:
+          type: string
+    InvitationResponse:
+      type: object
+      required: [email, status]
+      properties:
+        email:
+          type: string
+          description: The normalized address, trimmed and in lower case.
+        status:
+          type: string
+          enum: [pending, provisioned, failed]
+    BuyerRegistrationResponse:
+      type: object
+      required: [subject, status]
+      properties:
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [active, blocked]
+          description: A buyer registered before keeps its status, blocked included.
+    RoleView:
+      type: object
+      required: [ref, name, permissions, status, accessVersion, syncedVersion, definedAt, changedAt]
+      properties:
+        ref:
+          type: string
+        name:
+          type: string
+        permissions:
+          type: array
+          description: Sorted and without repetition.
+          items:
+            type: string
+        status:
+          type: string
+          enum: [active, retired]
+        accessVersion:
+          type: integer
+          format: int64
+        syncedVersion:
+          type: integer
+          format: int64
+          description: Behind accessVersion while the group of the role in Keycloak diverges.
+        definedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch.
+        changedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch of the last change.
+    InvitationView:
+      type: object
+      required: [email, roles, status, round, subject, failureReason, invitedAt, settledAt]
+      properties:
+        email:
+          type: string
+        roles:
+          type: array
+          description: Refs of roles, sorted and without repetition.
+          items:
+            type: string
+        status:
+          type: string
+          enum: [pending, provisioned, failed]
+        round:
+          type: integer
+          format: int64
+          description: Starts at 1 and grows with each reopening.
+        subject:
+          type: string
+          description: Empty until the invitation is provisioned.
+        failureReason:
+          type: string
+          description: Empty unless the invitation failed.
+        invitedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch of the current round.
+        settledAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch; zero while pending.
+    MembershipView:
+      type: object
+      required: [subject, email, roles, status, accessVersion, syncedVersion, joinedAt, changedAt]
+      properties:
+        subject:
+          type: string
+        email:
+          type: string
+          description: Empty when the membership was established by claiming the ownership.
+        roles:
+          type: array
+          description: Refs of roles, sorted and without repetition; may hold owner.
+          items:
+            type: string
+        status:
+          type: string
+          enum: [active, removed]
+        accessVersion:
+          type: integer
+          format: int64
+        syncedVersion:
+          type: integer
+          format: int64
+          description: Behind accessVersion while the member in Keycloak diverges.
+        joinedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch.
+        changedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch of the last change.
+    BuyerView:
+      type: object
+      required: [subject, name, status, blockReason, accessVersion, syncedVersion, registeredAt, changedAt]
+      properties:
+        subject:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, blocked]
+        blockReason:
+          type: string
+          description: Empty while the buyer is active.
+        accessVersion:
+          type: integer
+          format: int64
+        syncedVersion:
+          type: integer
+          format: int64
+          description: Behind accessVersion while the iam:buyer role in Keycloak diverges.
+        registeredAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch.
+        changedAt:
+          type: integer
+          format: int64
+          description: Nanoseconds since the Unix epoch of the last change.
+    Rejection:
+      type: object
+      required: [code, message]
+      description: >-
+        A refusal the domain or the edge declared. Domain codes take the
+        "context/aggregate/reason" form (FND-03 §5.3; ADR-053).
+      properties:
+        code:
+          type: string
+          examples:
+            - iam/role/ref-invalid
+            - iam/role/reserved
+            - iam/role/name-empty
+            - iam/role/permissions-empty
+            - iam/role/permission-unknown
+            - iam/role/duplicate-name
+            - iam/role/retired
+            - iam/invitation/email-invalid
+            - iam/invitation/roles-empty
+            - iam/invitation/role-invalid
+            - iam/invitation/role-reserved
+            - iam/membership/subject-invalid
+            - iam/membership/role-invalid
+            - iam/membership/owner-claimed
+            - iam/membership/removed
+            - iam/membership/owner-reserved
+            - iam/membership/owner-protected
+            - iam/membership/role-not-held
+            - iam/membership/last-role
+            - iam/buyer/subject-invalid
+            - iam/buyer/name-empty
+            - iam/buyer/blocked
+            - iam/buyer/not-active
+            - iam/buyer/reason-empty
+            - iam/buyer/not-blocked
+            - missing-idempotency-key
+            - invalid-idempotency-key
+            - reused-idempotency-key
+            - in-flight-idempotency-key
+        message:
+          type: string
+  headers:
+    IdempotentReplayed:
+      description: >-
+        Present with the value true when the answer is the stored response of
+        an earlier request with the same Idempotency-Key (IDM-08); absent on the
+        first answer.
+      schema:
+        type: string
+        enum: ['true']
+  responses:
+    BadRequest:
+      description: >-
+        The request is malformed, a ref or an e-mail in the path is outside its
+        form, or the request misses Idempotency-Key or carries it outside its
+        format
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    NotFound:
+      description: No role, invitation, member or buyer under this identity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    VersionConflict:
+      description: >-
+        A concurrent write advanced the aggregate (replay the request), or a
+        request with the same Idempotency-Key is still in progress
+        (in-flight-idempotency-key)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Rejected:
+      description: >-
+        The domain refused the command (a business rejection, not a failure), or
+        the Idempotency-Key was already used with another request
+        (reused-idempotency-key)
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    AdmissionRefused:
+      description: Admission control refused the request before reading the body (RES-17)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Unavailable:
+      description: The iam context is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Timeout:
+      description: The deadline of the request expired before the context answered (GRP-04)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'
+    Failure:
+      description: >-
+        Technical failure, or a refusal of authorization (403, when the caller
+        lacks the permission or its tenant is not the kind the route lives in);
+        the body carries no internal detail (ERR-20)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Rejection'

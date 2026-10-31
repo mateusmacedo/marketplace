@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// The roles of an active member of a store changed, in the iam bounded context.
+// Envelope type: com.company.iam.member-access-changed.v1 (PTB-03).
+message MemberAccessChanged {
+  string subject = 1;
+  // Refs of roles, sorted and without repetition; may hold owner.
+  repeated string roles = 2;
+  int64 access_version = 3;
+  google.protobuf.Timestamp changed_at = 4;
+}

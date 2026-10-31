@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// An active member was removed from a store, in the iam bounded context.
+// Envelope type: com.company.iam.member-removed.v1 (PTB-03).
+message MemberRemoved {
+  string subject = 1;
+  int64 access_version = 2;
+  google.protobuf.Timestamp removed_at = 3;
+}

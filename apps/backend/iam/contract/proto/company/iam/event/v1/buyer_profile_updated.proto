@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// An active buyer updated its profile, in the iam bounded context.
+// Envelope type: com.company.iam.buyer-profile-updated.v1 (PTB-03).
+message BuyerProfileUpdated {
+  string subject = 1;
+  string name = 2;
+  google.protobuf.Timestamp updated_at = 3;
+}

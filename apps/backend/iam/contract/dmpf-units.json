@@ -1,0 +1,90 @@
+{
+  "schema": "dmpf/units@1",
+  "units": [
+    {
+      "id": "iam/contract",
+      "block": "contract",
+      "bounded_context": "iam",
+      "public_integration_surface": true,
+      "include": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/contract",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/contract/gen/go/company/iam/event/v1",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/contract/gen/go/company/iam/service/v1"
+      ]
+    }
+  ],
+  "external": [
+    {
+      "package": "google.golang.org/protobuf",
+      "versions": ">=1.36.12 <2",
+      "entrypoints": [
+        "google.golang.org/protobuf/proto",
+        "google.golang.org/protobuf/types/known/anypb",
+        "google.golang.org/protobuf/types/known/timestamppb",
+        "google.golang.org/protobuf/reflect/protoreflect",
+        "google.golang.org/protobuf/runtime/protoimpl"
+      ],
+      "capability": "wire.codec"
+    }
+  ],
+  "exceptions": [
+    {
+      "unit": "iam/contract",
+      "dependency": "reflect",
+      "reason": "import emitido pelo protoc-gen-go v1.36.12 em todo arquivo gerado; plumbing do runtime Protobuf, não uso de framework (RFC 6.4)",
+      "owner": "team:tech-leads",
+      "review_by": "2027-04-30",
+      "id": "X-iam-contract-reflect",
+      "object": {
+        "kind": "external-dependency",
+        "unit": "iam/contract",
+        "identity": "reflect"
+      },
+      "adr": "ADR-033",
+      "justification": "import emitido pelo protoc-gen-go v1.36.12 em todo arquivo gerado; plumbing do runtime Protobuf, não uso de framework (RFC 6.4)",
+      "convergence": {
+        "kind": "review",
+        "review_by": "2027-04-30",
+        "replanning_condition": "elimination of reflect and unsafe imports from protoc-gen-go output"
+      },
+      "valid_from": "2026-10-30T00:00:00Z",
+      "valid_until": "2027-04-30",
+      "history": [
+        {
+          "event": "granted",
+          "at": "2026-10-30T00:00:00Z",
+          "by": "team:tech-leads"
+        }
+      ]
+    },
+    {
+      "unit": "iam/contract",
+      "dependency": "unsafe",
+      "reason": "import emitido pelo protoc-gen-go v1.36.12 em todo arquivo gerado; plumbing do runtime Protobuf, não uso de framework (RFC 6.4)",
+      "owner": "team:tech-leads",
+      "review_by": "2027-04-30",
+      "id": "X-iam-contract-unsafe",
+      "object": {
+        "kind": "external-dependency",
+        "unit": "iam/contract",
+        "identity": "unsafe"
+      },
+      "adr": "ADR-033",
+      "justification": "import emitido pelo protoc-gen-go v1.36.12 em todo arquivo gerado; plumbing do runtime Protobuf, não uso de framework (RFC 6.4)",
+      "convergence": {
+        "kind": "review",
+        "review_by": "2027-04-30",
+        "replanning_condition": "elimination of reflect and unsafe imports from protoc-gen-go output"
+      },
+      "valid_from": "2026-10-30T00:00:00Z",
+      "valid_until": "2027-04-30",
+      "history": [
+        {
+          "event": "granted",
+          "at": "2026-10-30T00:00:00Z",
+          "by": "team:tech-leads"
+        }
+      ]
+    }
+  ]
+}
