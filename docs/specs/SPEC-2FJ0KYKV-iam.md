@@ -303,8 +303,9 @@ Vive no tenant da loja.
   - `pending` → `provisioned` — por `ConfirmInvitation`
   - `pending` → `failed` — por `FailInvitation`
 - **Invariantes de estado**:
-  - `email` tem até 254 caracteres, exatamente um `@`, parte local não vazia e
-    domínio com ao menos um `.` — `iam/invitation/email-invalid`.
+  - `email` tem até 254 caracteres, exatamente um `@`, parte local não vazia,
+    domínio com ao menos um `.` e nenhum caractere de controle —
+    `iam/invitation/email-invalid`.
   - `roles` nunca é vazio — `iam/invitation/roles-empty`; toda ref tem a forma
     de `Role.ref` — `iam/invitation/role-invalid`; `owner` não é convidável —
     `iam/invitation/role-reserved`.
@@ -336,12 +337,16 @@ Vive no tenant da loja.
   - `active` → `removed` — por `RemoveMember`
   - `removed` → `removed` — por `ConfirmMemberAccessSynced`
 - **Invariantes de estado**:
-  - `subject` tem de 1 a 255 caracteres — `iam/membership/subject-invalid`.
+  - `subject` tem de 1 a 255 caracteres, sem caractere de controle —
+    `iam/membership/subject-invalid`.
   - `roles` nunca é vazio enquanto `active` — `iam/membership/last-role`.
   - Toda ref de `roles` tem a forma de `Role.ref` ou é `owner` —
     `iam/membership/role-invalid`.
   - `syncedVersion ≤ accessVersion`.
-- **Unicidade de negócio**: nenhuma.
+- **Unicidade de negócio**: um só dono ativo por tenant —
+  `iam/membership/owner-claimed` (ADR-066 do platform). Conta como dono o
+  vínculo `active` com `owner` em `roles`; os demais vínculos não entram na
+  unicidade.
 
 ### Buyer
 
@@ -365,7 +370,8 @@ Vive no tenant do operador.
   - `blocked` → `active` — por `UnblockBuyer`
   - `blocked` → `blocked` — por `ConfirmBuyerAccessSynced`
 - **Invariantes de estado**:
-  - `subject` tem de 1 a 255 caracteres — `iam/buyer/subject-invalid`.
+  - `subject` tem de 1 a 255 caracteres, sem caractere de controle —
+    `iam/buyer/subject-invalid`.
   - `name` nunca é vazio — `iam/buyer/name-empty`.
   - `blockReason` não é vazio se e só se `status = blocked` —
     `iam/buyer/reason-empty`.
@@ -469,7 +475,8 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
 - **Entrada**: `subject: string`
 - **Pré-condições**:
   - `status = pending` → `iam/invitation/not-pending`
-  - `subject` de 1 a 255 caracteres → `iam/invitation/subject-invalid`
+  - `subject` de 1 a 255 caracteres, sem caractere de controle →
+    `iam/invitation/subject-invalid`
 - **Efeitos sobre o estado**:
   - `status ← provisioned`
   - `subject ← cmd.subject`
@@ -500,7 +507,8 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
   de `InvitationProvisioned` (**interno**, com o e-mail e os papéis do convite)
 - **Entrada**: `subject: string`, `email: string`, `roles: string[]`
 - **Pré-condições**:
-  - `subject` de 1 a 255 caracteres → `iam/membership/subject-invalid`
+  - `subject` de 1 a 255 caracteres, sem caractere de controle →
+    `iam/membership/subject-invalid`
   - `roles` não vazio → `iam/membership/last-role`
   - toda ref na forma de `Role.ref` ou `owner` → `iam/membership/role-invalid`
 - **Efeitos sobre o estado**:
@@ -517,10 +525,12 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
 - **Eventos emitidos**: `MembershipEstablished` (quando inicializa ou retorna),
   `MemberAccessChanged` (quando um vínculo ativo ganha papel)
 - **Resposta**: `subject: string`
-- **Guarda do `ClaimOwnership`** (pré-condição relacional, ADR-067): antes de
-  decidir, o caso de uso lê na UoW se a loja tem `Membership` `active` com
-  `owner` de outro `subject`; se tem, recusa com `iam/membership/owner-claimed`.
-  Só o primeiro a reclamar vira dono, e o primeiro é o dono semeado: até ele
+- **Dono único no `ClaimOwnership`** (unicidade de negócio, ADR-066): o caso
+  de uso não lê antes de decidir. Quando o `EstablishMembership` põe `owner`
+  num vínculo `active` de outro `subject` numa loja que já tem dono, a
+  gravação colide com a unicidade do dono ativo e o comando recusa com
+  `iam/membership/owner-claimed`, sem mudar nenhuma `Membership`. Só o
+  primeiro a reclamar vira dono, e o primeiro é o dono semeado: até ele
   reclamar, a loja não tem `Membership`, e ninguém mais tem `iam:write` nela
   para convidar. Quem já é o dono reclama de novo sem efeito.
 
@@ -592,7 +602,8 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
 - **Entrada**: `subject: string` — preenchido pelo `bff` com o sujeito do token,
   nunca pelo cliente; `name: string`
 - **Pré-condições**:
-  - `subject` de 1 a 255 caracteres → `iam/buyer/subject-invalid`
+  - `subject` de 1 a 255 caracteres, sem caractere de controle →
+    `iam/buyer/subject-invalid`
   - `name` não vazio → `iam/buyer/name-empty`
 - **Efeitos sobre o estado**:
   - quando ausente: `name ← cmd.name`, `status ← active`, `blockReason ← ""`,
@@ -846,8 +857,17 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
 - **Forma na borda**: `name` e `reason` seguem a regra do `name` do golden
   `bookings` (de 1 a 200 runas), aplicada pelo gRPC (`INVALID_ARGUMENT`) e pelo
   `bff` (400 `invalid-request`) antes do caso de uso; `ref` e `email` no path
-  são recusados pela borda com 400 quando fora da forma. No corpo, a forma de
-  `ref`, `email`, `roles` e `permissions` fica com o domínio (422 no `bff`).
+  são recusados pela borda com 400 quando fora da forma, e o `subject` no path
+  ou o do token em `/iam/buyer/me` também (de 1 a 255 caracteres, sem caractere
+  de controle; `INVALID_ARGUMENT` no gRPC). No corpo, a forma
+  de `ref`, `email`, `subject`, `roles` e `permissions` fica com o domínio (422
+  no `bff`), e a identidade é julgada antes de qualquer leitura: um id fora da
+  forma recebe a recusa do domínio sem chegar ao banco.
+- **Tamanho na borda**: `roles` e `permissions` têm até 32 itens por
+  requisição, e o excesso é recusado pela borda (`INVALID_ARGUMENT`, 400 no
+  `bff`). O OpenAPI limita também cada item (63 caracteres em `roles` e 32 em
+  `permissions`) e o `email` (254). É limite de transporte, não invariante: a
+  união de papéis de um `Membership` não tem teto.
 - **Banco**: database e role `iam`, schema `public`, persistência híbrida, com
   `tenant_id` à frente de cada chave:
   - `roles` — chave `(tenant_id, role_id)`, `role_id` é a `ref`; `status`
@@ -858,8 +878,10 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
     `invitations_tenant_id_status_idx`.
   - `memberships` — chave `(tenant_id, membership_id)`, `membership_id` é o
     `subject`; `status` tipada (`FindMembershipsByStatus`), índice
-    `memberships_tenant_id_status_idx`; `owner` booleana gerada do snapshot
-    (`roles` contém `owner`), que a guarda do `ClaimOwnership` filtra.
+    `memberships_tenant_id_status_idx`; `owner` booleana gerada do snapshot,
+    `true` quando `status` é `active` e `roles` contém `owner` e `NULL` nos
+    demais vínculos, com `CONSTRAINT memberships_tenant_id_owner_key UNIQUE
+    (tenant_id, owner)`, que dá `iam/membership/owner-claimed`.
   - `buyers` — chave `(tenant_id, buyer_id)`, `buyer_id` é o `subject`;
     `status` tipada (`FindBuyersByStatus`), índice `buyers_tenant_id_status_idx`.
   - O resto do estado em `snapshot` `jsonb`; o ledger de tentativas e a inbox
@@ -886,7 +908,22 @@ ADR-070, na UoW que grava o desfecho do Keycloak, e os marcados como
   role `api`; vazia nega toda operação), com `ports.ErrDenied`
   (`PermissionDenied`, 403 no `bff`), sem tocar o banco.
 - **Auditoria**: pela trilha de auditoria do kernel (FND-08;
-  `observability/audit`), inclusive dos passos externos.
+  `observability/audit`), inclusive dos passos externos. O e-mail não vai a
+  prefixo de erro nem a log do contexto, e o `Object` da auditoria do
+  `InviteMember` é o digest SHA-256, em hexadecimal, do e-mail normalizado
+  (pseudonimização: sem sal, o digest se reverte por dicionário). O consumo de
+  `InvitationProvisioned` ainda não passa pela trilha, como no golden
+  `reservations`: o vínculo que ele estabelece fica sem registro de auditoria
+  até essa lacuna ser fechada.
+- **Risco conhecido — sondagem entre tenants**: a leitura vazia do kernel
+  sonda os outros tenants e devolve `ports.CrossTenantAccess` quando um deles
+  tem o mesmo valor (IDN-12, IDN-13). No `iam`, o `status`, a `ref`, o `email`
+  e o `subject` se repetem legitimamente entre lojas; a partir de duas lojas, a
+  busca sem resultado grava `security.cross_tenant_access` como `denied` e
+  conta como falha, sem acesso indevido. O evento leva o id em claro (por
+  exemplo, `invitations/<email>`), então o e-mail de outra loja aparece no
+  registro de segurança. O `iam` mantém o comportamento do kernel até a decisão
+  da DEVS-172 (projeto DMPF).
 - **Segredo**: a credencial da service account do `iam` no Keycloak entra por
   ambiente e nunca vai a log, evento ou snapshot. Os papéis só de leitura e as
   permissões do FGAP v2 de "Resultado dos spikes" são pré-requisito do `iam` em
@@ -1108,6 +1145,15 @@ Uma spec, decomposta em tasks no Linear, cada uma em sua branch:
 
 ## Escopo fora
 
+- **Paginação das consultas por status**: `FindRolesByStatus`,
+  `FindInvitationsByStatus`, `FindMembershipsByStatus` e `FindBuyersByStatus`
+  devolvem a coleção inteira, sem ordem estável. Com dezenas de milhares de
+  compradores ativos, a resposta passa do limite de 4 MB do cliente gRPC do
+  `bff`; a paginação fica para uma task própria.
+- **Remoção durante um reconvite pendente**: um `RemoveMember` feito depois de
+  um `InviteMember` ainda `pending` do mesmo e-mail é desfeito quando o
+  `InvitationProvisioned` chega. A spec cobre o removido que é reconvidado, não
+  o reconvidado que é removido; a decisão fica com a DEVS-163.
 - **Organização do seller, loja e dados bancários**: contexto `seller`; o
   registro e o status da loja são de `tenancy`.
 - **Endereços do comprador e métodos de pagamento salvos**: no MVP, o endereço

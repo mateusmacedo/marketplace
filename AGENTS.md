@@ -93,7 +93,7 @@ Ao mover arquivos ou pastas, verifique todos os imports afetados — inclusive o
 
 ## Visão geral e estrutura
 
-`marketplace` (workspace npm `@marketplace/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011). As apps são o `bff`, a borda REST do DMPF (ADR-012), e o primeiro bounded context, `tenancy` (SPEC-XB4NCW4J); os demais contextos do marketplace entram em `apps/backend/` conforme o `docs/roadmap.md`.
+`marketplace` (workspace npm `@marketplace/source`) é o baseline de monorepo **Nx + pnpm** multistack mantido por `mateusmacedo`. O workspace já vem preparado para Express, Fastify, NestJS, Next.js, Angular e Go (`go.work` / `@nx-go/nx-go`) e traz a saída do `init` do `@mateusmacedo/dmpf-plugin` para bounded contexts Go do DMPF (ADR-011). As apps são o `bff`, a borda REST do DMPF (ADR-012), e os bounded contexts `tenancy` (SPEC-XB4NCW4J) e `iam` (SPEC-2FJ0KYKV); os demais contextos do marketplace entram em `apps/backend/` conforme o `docs/roadmap.md`.
 
 Fonte de verdade dos projetos: `pnpm nx show projects`.
 
@@ -104,6 +104,7 @@ marketplace/
 ├── apps/
 │   ├── backend/bff/                # borda REST do DMPF (projeto Nx `bff`)
 │   ├── backend/tenancy/            # bounded context `tenancy` (projetos Nx `tenancy` e `tenancy-contract`)
+│   ├── backend/iam/                # bounded context `iam` (projetos Nx `iam` e `iam-contract`)
 │   ├── frontend/                   # placeholder — sem projeto Nx
 │   └── serverless/                 # placeholder — sem projeto Nx
 ├── libs/
@@ -144,12 +145,13 @@ Apps Nest criadas a partir daqui seguem tipicamente `src/app/<feature>/` (contro
 | --- | --- | --- | --- |
 | `bff` | `apps/backend/bff` | `type:app`, `scope:backend`, `stack:go`, `layer:apps` | Borda REST pública: autentica pelo Keycloak (`authn` do kernel), consulta a deny-list de revogação no Redis e expõe `GET /v1/me`; o papel `session-events` alimenta a deny-list. Detalhes em `apps/backend/bff/README.md` e na ADR-012. |
 | `tenancy` | `apps/backend/tenancy` | `type:app`, `scope:backend`, `stack:go`, `layer:apps` | Registro das lojas (tenants) e seu ciclo de vida, no escopo do tenant do operador (`TENANCY_OPERATOR_TENANT`); só gRPC, com as rotas REST `/tenancy/store` no `bff`. Detalhes em `apps/backend/tenancy/README.md` e na SPEC-XB4NCW4J. |
+| `iam` | `apps/backend/iam` | `type:app`, `scope:backend`, `stack:go`, `layer:apps` | Papéis, convites e vínculos de cada loja e compradores no tenant do operador (`IAM_OPERATOR_TENANT`); só gRPC, com os papéis `api`, `relay` e `consumer` (este consome o próprio `InvitationProvisioned`). Detalhes em `apps/backend/iam/README.md` e na SPEC-2FJ0KYKV. |
 
 `apps/frontend` e `apps/serverless` seguem como diretórios de destino. Bounded contexts nascem pelo `/dmpf-new-context`; outras apps, pela skill `nx-generate`.
 
 ### Libs
 
-Nenhuma lib TypeScript. A única lib é o contrato Go do `tenancy`, `tenancy-contract` (`apps/backend/tenancy/contract`, tags `type:lib`, `scope:backend`, `stack:go`, `layer:contract`), gerado pelo `bounded-context` do plugin com o próprio release group no `nx.json`. `libs/backend`, `libs/frontend` e `libs/shared` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira lib compartilhada, use o generator do Nx (`pnpm nx g @nx/js:lib libs/shared/<name>`), com as três tags 3D e `--linter=none`; o passo a passo com todas as flags está em `docs/nx-reference/tasks.md`. O `go.work` declara `go 1.26.10` (diretiva do `@mateusmacedo/dmpf-plugin`), e os módulos Go são o do `bff` e os do `tenancy` (o contexto e o `contract`), declarados no `go.work` pelo generator (ver `docs/guides/primeiro-bounded-context.md`).
+Nenhuma lib TypeScript. As libs são os contratos Go dos contextos, `tenancy-contract` (`apps/backend/tenancy/contract`) e `iam-contract` (`apps/backend/iam/contract`), com as tags `type:lib`, `scope:backend`, `stack:go` e `layer:contract`, gerados pelo `bounded-context` do plugin, cada um com o próprio release group no `nx.json`. `libs/backend`, `libs/frontend` e `libs/shared` são diretórios de destino, sem projeto Nx registrado. Para criar a primeira lib compartilhada, use o generator do Nx (`pnpm nx g @nx/js:lib libs/shared/<name>`), com as três tags 3D e `--linter=none`; o passo a passo com todas as flags está em `docs/nx-reference/tasks.md`. O `go.work` declara `go 1.26.10` (diretiva do `@mateusmacedo/dmpf-plugin`), e os módulos Go são o do `bff` e os de cada contexto (`tenancy` e `iam`, cada um com o contexto e o `contract`), declarados no `go.work` pelo generator (ver `docs/guides/primeiro-bounded-context.md`).
 
 Sem nenhum projeto com a tag `type:lib`, o `nx release` sai com erro (`Release group "__default__" matches no projects`) em vez de concluir vazio. Por isso o `nx-release.yml` tem o step `Detect lib release candidates`, que pula o versionamento e o push enquanto não houver lib — mesmo padrão do step de candidatos Docker. O pipeline fica armado e ocioso, não vermelho.
 
