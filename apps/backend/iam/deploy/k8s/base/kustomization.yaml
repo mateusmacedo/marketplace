@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Contexto iam: api gRPC, relay e consumer como Deployments de uma mesma imagem. Os
+# Secrets `iam` (PG_DSN, KAFKA_BROKERS) e `iam-migrator` (PG_MIGRATE_DSN,
+# só do api) vêm do overlay — a base não conhece credencial nenhuma.
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/name: iam
+      app.kubernetes.io/part-of: dmpf
+
+resources:
+  - serviceaccount.yaml
+  - configmap.yaml
+  - deployment-api.yaml
+  - deployment-relay.yaml
+  - deployment-consumer.yaml
+  - service-api.yaml
+  - pdb-api.yaml
+  - networkpolicy.yaml

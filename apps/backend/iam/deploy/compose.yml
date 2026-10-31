@@ -1,0 +1,73 @@
+# Processos do iam na topologia local (ADR-044): api gRPC, que aplica o
+# schema (MIGRATE=true), relay da própria outbox e consumer de iam.events.
+x-image: &image
+  build:
+    context: ../../../..
+    dockerfile: apps/backend/iam/Dockerfile
+  image: ${IAM_IMAGE:-iam:local}
+
+x-env: &env
+  OTEL_SERVICE_NAME: iam
+  PG_DSN: postgres://iam:${IAM_PG_PASSWORD:-iam-local}@postgres:5432/iam?sslmode=disable
+
+x-kafka: &kafka
+  KAFKA_SASL_USERNAME: iam
+  KAFKA_SASL_PASSWORD: ${KAFKA_IAM_PASSWORD:-iam-local}
+  KAFKA_GROUP: ${KAFKA_IAM_GROUP:-iam-membership}
+  KAFKA_IAM_TOPIC: ${KAFKA_IAM_TOPIC:-iam.events}
+  KAFKA_IAM_DLQ: ${KAFKA_IAM_DLQ:-iam.events.dlq}
+
+services:
+  dmpf-iam-api:
+    <<: *image
+    extends:
+      file: ../../../../infra/local/compose/app-base.yml
+      service: dmpf-grpc-api
+    stop_grace_period: 30s
+    environment:
+      <<: *env
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.version=local,deployment.environment.name=local},service.instance.id=iam-api,dmpf.process.role=api
+      PG_MIGRATE_DSN: postgres://iam_migrator:${IAM_PG_MIGRATOR_PASSWORD:-iam-migrator-local}@postgres:5432/iam?sslmode=disable
+      GRPC_TLS_CERT_FILE: /pki/dmpf-iam-api.crt
+      GRPC_TLS_KEY_FILE: /pki/dmpf-iam-api.key
+      IAM_OPERATOR_TENANT: ${IAM_OPERATOR_TENANT:-marketplace}
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      postgres-init:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+
+  dmpf-iam-relay:
+    <<: *image
+    extends:
+      file: ../../../../infra/local/compose/app-base.yml
+      service: dmpf-kafka-worker
+    stop_grace_period: 30s
+    command: ['--role', 'relay']
+    environment:
+      <<: [*env, *kafka]
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.version=local,deployment.environment.name=local},service.instance.id=iam-relay,dmpf.process.role=relay
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      dmpf-iam-api:
+        condition: service_started
+
+  dmpf-iam-consumer:
+    <<: *image
+    extends:
+      file: ../../../../infra/local/compose/app-base.yml
+      service: dmpf-kafka-worker
+    stop_grace_period: 30s
+    command: ['--role', 'consumer']
+    environment:
+      <<: [*env, *kafka]
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.version=local,deployment.environment.name=local},service.instance.id=iam-consumer,dmpf.process.role=consumer
+      IAM_OPERATOR_TENANT: ${IAM_OPERATOR_TENANT:-marketplace}
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      dmpf-iam-api:
+        condition: service_started
