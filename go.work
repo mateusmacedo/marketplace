@@ -2,8 +2,13 @@ go 1.26.10
 
 use (
 	./apps/backend/bff
+	./apps/backend/iam
+	./apps/backend/iam/contract
 	./apps/backend/tenancy
 	./apps/backend/tenancy/contract
 )
 
-replace github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract v0.1.0 => ./apps/backend/tenancy/contract
+replace (
+	github.com/mateusmacedo/marketplace/apps/backend/iam/contract v0.1.0 => ./apps/backend/iam/contract
+	github.com/mateusmacedo/marketplace/apps/backend/tenancy/contract v0.1.0 => ./apps/backend/tenancy/contract
+)
