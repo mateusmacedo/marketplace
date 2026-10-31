@@ -1,6 +1,6 @@
 {
   "schema": "dmpf/units-baseline@1",
-  "digest": "sha256:59719410171d2f9e3e6ea561a761ef55270ee640d994e146e9bb28ecdcbc8c4b",
+  "digest": "sha256:90da6a22b6de2192718e36db15f084bf5862434745d7ce5341927c5eeafda364",
   "entries": [
     {
       "unit": "bff/app",
@@ -12,6 +12,82 @@
         "github.com/mateusmacedo/marketplace/apps/backend/bff/app/api",
         "github.com/mateusmacedo/marketplace/apps/backend/bff/app/rpc",
         "github.com/mateusmacedo/marketplace/apps/backend/bff/cmd"
+      ]
+    },
+    {
+      "unit": "iam/app",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "app",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/app",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/app/rpc",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/cmd"
+      ]
+    },
+    {
+      "unit": "iam/appkit",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "app",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/appkit"
+      ]
+    },
+    {
+      "unit": "iam/application",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "application",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/application"
+      ]
+    },
+    {
+      "unit": "iam/distkit",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "app",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/distkit"
+      ]
+    },
+    {
+      "unit": "iam/domain",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "domain",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/domain"
+      ]
+    },
+    {
+      "unit": "iam/ports",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "port",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/ports"
+      ]
+    },
+    {
+      "unit": "iam/provider-postgres",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam",
+      "block": "provider",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/provider"
+      ]
+    },
+    {
+      "unit": "iam/contract",
+      "module": "github.com/mateusmacedo/marketplace/apps/backend/iam/contract",
+      "block": "contract",
+      "bounded_context": "iam",
+      "membership": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/contract",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/contract/gen/go/company/iam/event/v1",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/contract/gen/go/company/iam/service/v1"
       ]
     },
     {

@@ -95,6 +95,12 @@
       }
     },
     "groups": {
+      "go-contract-iam": {
+        "projects": ["iam-contract"],
+        "releaseTag": {
+          "pattern": "apps/backend/iam/contract/v{version}"
+        }
+      },
       "go-contract-tenancy": {
         "projects": ["tenancy-contract"],
         "releaseTag": {

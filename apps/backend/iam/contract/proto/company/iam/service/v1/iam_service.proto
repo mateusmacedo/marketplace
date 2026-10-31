@@ -1,0 +1,383 @@
+syntax = "proto3";
+
+package company.iam.service.v1;
+
+// Internal synchronous surface of the iam bounded context (GRP-01). A domain
+// refusal travels as `rejection` in the response; a technical failure is a gRPC
+// status. Roles, invitations and memberships live in the tenant of a store, and
+// buyers in the tenant of the operator; the external steps of the Keycloak
+// projection and the internal commands have no RPC.
+service IamService {
+  rpc DefineRole(DefineRoleRequest) returns (DefineRoleResponse);
+  rpc ChangeRolePermissions(ChangeRolePermissionsRequest) returns (ChangeRolePermissionsResponse);
+  rpc RetireRole(RetireRoleRequest) returns (RetireRoleResponse);
+  rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
+  rpc ClaimOwnership(ClaimOwnershipRequest) returns (ClaimOwnershipResponse);
+  rpc GrantRole(GrantRoleRequest) returns (GrantRoleResponse);
+  rpc RevokeRole(RevokeRoleRequest) returns (RevokeRoleResponse);
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc RegisterBuyer(RegisterBuyerRequest) returns (RegisterBuyerResponse);
+  rpc UpdateBuyerProfile(UpdateBuyerProfileRequest) returns (UpdateBuyerProfileResponse);
+  rpc BlockBuyer(BlockBuyerRequest) returns (BlockBuyerResponse);
+  rpc UnblockBuyer(UnblockBuyerRequest) returns (UnblockBuyerResponse);
+  rpc FindRole(FindRoleRequest) returns (FindRoleResponse);
+  rpc FindRolesByStatus(FindRolesByStatusRequest) returns (FindRolesByStatusResponse);
+  rpc FindInvitation(FindInvitationRequest) returns (FindInvitationResponse);
+  rpc FindInvitationsByStatus(FindInvitationsByStatusRequest) returns (FindInvitationsByStatusResponse);
+  rpc FindMembership(FindMembershipRequest) returns (FindMembershipResponse);
+  rpc FindMembershipsByStatus(FindMembershipsByStatusRequest) returns (FindMembershipsByStatusResponse);
+  rpc FindBuyer(FindBuyerRequest) returns (FindBuyerResponse);
+  rpc FindBuyersByStatus(FindBuyersByStatusRequest) returns (FindBuyersByStatusResponse);
+}
+
+message DefineRoleRequest {
+  string ref = 1;
+  string name = 2;
+  repeated string permissions = 3;
+}
+
+message DefineRoleResponse {
+  oneof result {
+    Defined defined = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Defined {
+  string ref = 1;
+}
+
+message ChangeRolePermissionsRequest {
+  string ref = 1;
+  repeated string permissions = 2;
+}
+
+message ChangeRolePermissionsResponse {
+  oneof result {
+    PermissionsChanged permissions_changed = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message PermissionsChanged {
+  string ref = 1;
+}
+
+message RetireRoleRequest {
+  string ref = 1;
+}
+
+message RetireRoleResponse {
+  oneof result {
+    Retired retired = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Retired {
+  string ref = 1;
+}
+
+message InviteMemberRequest {
+  string email = 1;
+  repeated string roles = 2;
+}
+
+message InviteMemberResponse {
+  oneof result {
+    Invited invited = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Invited {
+  // The normalized address: trimmed and in lower case.
+  string email = 1;
+  InvitationStatus status = 2;
+}
+
+message ClaimOwnershipRequest {
+  // Filled by the bff with the subject of the token, never by the client.
+  string subject = 1;
+}
+
+message ClaimOwnershipResponse {
+  oneof result {
+    Claimed claimed = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Claimed {
+  string subject = 1;
+}
+
+message GrantRoleRequest {
+  string subject = 1;
+  string role = 2;
+}
+
+message GrantRoleResponse {
+  oneof result {
+    Granted granted = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Granted {
+  string subject = 1;
+}
+
+message RevokeRoleRequest {
+  string subject = 1;
+  string role = 2;
+}
+
+message RevokeRoleResponse {
+  oneof result {
+    Revoked revoked = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Revoked {
+  string subject = 1;
+}
+
+message RemoveMemberRequest {
+  string subject = 1;
+}
+
+message RemoveMemberResponse {
+  oneof result {
+    Removed removed = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Removed {
+  string subject = 1;
+}
+
+message RegisterBuyerRequest {
+  // Filled by the bff with the subject of the token, never by the client.
+  string subject = 1;
+  string name = 2;
+}
+
+message RegisterBuyerResponse {
+  oneof result {
+    Registered registered = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Registered {
+  string subject = 1;
+  // A buyer registered before keeps its status, blocked included.
+  BuyerStatus status = 2;
+}
+
+message UpdateBuyerProfileRequest {
+  string subject = 1;
+  string name = 2;
+}
+
+message UpdateBuyerProfileResponse {
+  oneof result {
+    ProfileUpdated profile_updated = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message ProfileUpdated {
+  string subject = 1;
+}
+
+message BlockBuyerRequest {
+  string subject = 1;
+  string reason = 2;
+}
+
+message BlockBuyerResponse {
+  oneof result {
+    Blocked blocked = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Blocked {
+  string subject = 1;
+}
+
+message UnblockBuyerRequest {
+  string subject = 1;
+}
+
+message UnblockBuyerResponse {
+  oneof result {
+    Unblocked unblocked = 1;
+    Rejection rejection = 2;
+  }
+}
+
+message Unblocked {
+  string subject = 1;
+}
+
+message FindRoleRequest {
+  string ref = 1;
+}
+
+message FindRoleResponse {
+  Role role = 1;
+}
+
+message FindRolesByStatusRequest {
+  RoleStatus status = 1;
+}
+
+message FindRolesByStatusResponse {
+  repeated Role roles = 1;
+}
+
+message FindInvitationRequest {
+  string email = 1;
+}
+
+message FindInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message FindInvitationsByStatusRequest {
+  InvitationStatus status = 1;
+}
+
+message FindInvitationsByStatusResponse {
+  repeated Invitation invitations = 1;
+}
+
+message FindMembershipRequest {
+  string subject = 1;
+}
+
+message FindMembershipResponse {
+  Membership membership = 1;
+}
+
+message FindMembershipsByStatusRequest {
+  MembershipStatus status = 1;
+}
+
+message FindMembershipsByStatusResponse {
+  repeated Membership memberships = 1;
+}
+
+message FindBuyerRequest {
+  string subject = 1;
+}
+
+message FindBuyerResponse {
+  Buyer buyer = 1;
+}
+
+message FindBuyersByStatusRequest {
+  BuyerStatus status = 1;
+}
+
+message FindBuyersByStatusResponse {
+  repeated Buyer buyers = 1;
+}
+
+message Role {
+  string ref = 1;
+  string name = 2;
+  // Sorted and without repetition.
+  repeated string permissions = 3;
+  RoleStatus status = 4;
+  int64 access_version = 5;
+  // Behind access_version while the group of the role in Keycloak diverges.
+  int64 synced_version = 6;
+  // Nanoseconds since the Unix epoch, the domain's instant.
+  int64 defined_at = 7;
+  // Nanoseconds since the Unix epoch of the last change.
+  int64 changed_at = 8;
+}
+
+enum RoleStatus {
+  ROLE_STATUS_UNSPECIFIED = 0;
+  ROLE_STATUS_ACTIVE = 1;
+  ROLE_STATUS_RETIRED = 2;
+}
+
+message Invitation {
+  // The normalized address: trimmed and in lower case.
+  string email = 1;
+  // Refs of roles, sorted and without repetition.
+  repeated string roles = 2;
+  InvitationStatus status = 3;
+  int64 round = 4;
+  // Empty until the invitation is provisioned.
+  string subject = 5;
+  // Empty unless the invitation failed.
+  string failure_reason = 6;
+  // Nanoseconds since the Unix epoch of the current round.
+  int64 invited_at = 7;
+  // Nanoseconds since the Unix epoch; zero while the invitation is pending.
+  int64 settled_at = 8;
+}
+
+enum InvitationStatus {
+  INVITATION_STATUS_UNSPECIFIED = 0;
+  INVITATION_STATUS_PENDING = 1;
+  INVITATION_STATUS_PROVISIONED = 2;
+  INVITATION_STATUS_FAILED = 3;
+}
+
+message Membership {
+  string subject = 1;
+  // Empty when the membership was established by claiming the ownership.
+  string email = 2;
+  // Refs of roles, sorted and without repetition; may hold owner.
+  repeated string roles = 3;
+  MembershipStatus status = 4;
+  int64 access_version = 5;
+  // Behind access_version while the member in Keycloak diverges.
+  int64 synced_version = 6;
+  // Nanoseconds since the Unix epoch, the domain's instant.
+  int64 joined_at = 7;
+  // Nanoseconds since the Unix epoch of the last change.
+  int64 changed_at = 8;
+}
+
+enum MembershipStatus {
+  MEMBERSHIP_STATUS_UNSPECIFIED = 0;
+  MEMBERSHIP_STATUS_ACTIVE = 1;
+  MEMBERSHIP_STATUS_REMOVED = 2;
+}
+
+message Buyer {
+  string subject = 1;
+  string name = 2;
+  BuyerStatus status = 3;
+  // Empty while the buyer is active.
+  string block_reason = 4;
+  int64 access_version = 5;
+  // Behind access_version while the iam:buyer role in Keycloak diverges.
+  int64 synced_version = 6;
+  // Nanoseconds since the Unix epoch, the domain's instant.
+  int64 registered_at = 7;
+  // Nanoseconds since the Unix epoch of the last change.
+  int64 changed_at = 8;
+}
+
+enum BuyerStatus {
+  BUYER_STATUS_UNSPECIFIED = 0;
+  BUYER_STATUS_ACTIVE = 1;
+  BUYER_STATUS_BLOCKED = 2;
+}
+
+message Rejection {
+  string code = 1;
+  string message = 2;
+}

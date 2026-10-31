@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// An active buyer lost the permission to buy, with a reason, in the iam bounded
+// context. Envelope type: com.company.iam.buyer-blocked.v1 (PTB-03).
+message BuyerBlocked {
+  string subject = 1;
+  string reason = 2;
+  int64 access_version = 3;
+  google.protobuf.Timestamp blocked_at = 4;
+}

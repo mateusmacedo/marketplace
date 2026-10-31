@@ -10,6 +10,8 @@ resources:
 secretGenerator:
   - name: databases
     literals:
+      - iam=iam-dev
+      - iam_migrator=iam-migrator-dev
       - tenancy=tenancy-dev
       - tenancy_migrator=tenancy-migrator-dev
     options:

@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/mateusmacedo/iam
+    newTag: hmg
+
+replicas:
+  - name: iam-api
+    count: 2
+
+patches:
+  - path: configmap-iam-patch.yaml
+  - path: deployment-iam-api-patch.yaml
+  - path: deployment-iam-relay-patch.yaml
+  - path: deployment-iam-consumer-patch.yaml

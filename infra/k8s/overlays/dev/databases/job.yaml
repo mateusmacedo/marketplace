@@ -25,6 +25,25 @@ spec:
           args:
             - >-
               set -e; until pg_isready; do sleep 2; done;
+              if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'iam_migrator'" | grep -q 1; then
+              psql -c "CREATE ROLE \"iam_migrator\" LOGIN"; fi;
+              printf '%s\n' '\getenv pass IAM_PG_MIGRATOR_PASSWORD' 'SET log_min_error_statement = panic;' 'SET log_statement = none;'
+              "ALTER ROLE :\"role\" PASSWORD :'pass' LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;" | psql -v ON_ERROR_STOP=1 -v role=iam_migrator;
+              if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'iam'" | grep -q 1; then
+              psql -c "CREATE DATABASE \"iam\" OWNER \"iam_migrator\""; fi;
+              if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'iam' AND pg_get_userbyid(datdba) = 'iam_migrator'" | grep -q 1; then
+              psql -c "ALTER DATABASE \"iam\" OWNER TO \"iam_migrator\""; fi;
+              psql -d "iam" -c "GRANT CREATE ON SCHEMA public TO \"iam_migrator\"";
+              if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'iam'" | grep -q 1; then
+              psql -c "CREATE ROLE \"iam\" LOGIN"; fi;
+              printf '%s\n' '\getenv pass IAM_PG_PASSWORD' 'SET log_min_error_statement = panic;' 'SET log_statement = none;'
+              "ALTER ROLE :\"role\" PASSWORD :'pass' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;" | psql -v ON_ERROR_STOP=1 -v role=iam;
+              psql -c "GRANT CONNECT ON DATABASE \"iam\" TO \"iam\"";
+              psql -c "REVOKE CONNECT ON DATABASE \"iam\" FROM PUBLIC";
+              psql -c "REVOKE TEMPORARY ON DATABASE \"iam\" FROM PUBLIC";
+              psql -d "iam" -c "REVOKE CREATE ON SCHEMA public FROM PUBLIC";
+              psql -d "iam" -c "REVOKE CREATE ON SCHEMA public FROM \"iam\"";
+              psql -d "iam" -c "GRANT USAGE ON SCHEMA public TO \"iam\"";
               if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'tenancy_migrator'" | grep -q 1; then
               psql -c "CREATE ROLE \"tenancy_migrator\" LOGIN"; fi;
               printf '%s\n' '\getenv pass TENANCY_PG_MIGRATOR_PASSWORD' 'SET log_min_error_statement = panic;' 'SET log_statement = none;'
@@ -62,6 +81,16 @@ spec:
                 secretKeyRef:
                   name: postgres
                   key: POSTGRES_DB
+            - name: IAM_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: databases
+                  key: iam
+            - name: IAM_PG_MIGRATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: databases
+                  key: iam_migrator
             - name: TENANCY_PG_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -13,6 +13,8 @@ services:
       PGUSER: ${POSTGRES_USER:-postgres}
       PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
       PGDATABASE: postgres
+      IAM_PG_PASSWORD: ${IAM_PG_PASSWORD:-iam-local}
+      IAM_PG_MIGRATOR_PASSWORD: ${IAM_PG_MIGRATOR_PASSWORD:-iam-migrator-local}
       TENANCY_PG_PASSWORD: ${TENANCY_PG_PASSWORD:-tenancy-local}
       TENANCY_PG_MIGRATOR_PASSWORD: ${TENANCY_PG_MIGRATOR_PASSWORD:-tenancy-migrator-local}
     entrypoint: ['/bin/sh', '-c']
@@ -22,6 +24,25 @@ services:
     command:
       - >-
         set -e;
+        if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'iam_migrator'" | grep -q 1; then
+        psql -c "CREATE ROLE \"iam_migrator\" LOGIN"; fi;
+        printf '%s\n' '\getenv pass IAM_PG_MIGRATOR_PASSWORD' 'SET log_min_error_statement = panic;' 'SET log_statement = none;'
+        "ALTER ROLE :\"role\" PASSWORD :'pass' LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;" | psql -v ON_ERROR_STOP=1 -v role=iam_migrator;
+        if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'iam'" | grep -q 1; then
+        psql -c "CREATE DATABASE \"iam\" OWNER \"iam_migrator\""; fi;
+        if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'iam' AND pg_get_userbyid(datdba) = 'iam_migrator'" | grep -q 1; then
+        psql -c "ALTER DATABASE \"iam\" OWNER TO \"iam_migrator\""; fi;
+        psql -d "iam" -c "GRANT CREATE ON SCHEMA public TO \"iam_migrator\"";
+        if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'iam'" | grep -q 1; then
+        psql -c "CREATE ROLE \"iam\" LOGIN"; fi;
+        printf '%s\n' '\getenv pass IAM_PG_PASSWORD' 'SET log_min_error_statement = panic;' 'SET log_statement = none;'
+        "ALTER ROLE :\"role\" PASSWORD :'pass' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;" | psql -v ON_ERROR_STOP=1 -v role=iam;
+        psql -c "GRANT CONNECT ON DATABASE \"iam\" TO \"iam\"";
+        psql -c "REVOKE CONNECT ON DATABASE \"iam\" FROM PUBLIC";
+        psql -c "REVOKE TEMPORARY ON DATABASE \"iam\" FROM PUBLIC";
+        psql -d "iam" -c "REVOKE CREATE ON SCHEMA public FROM PUBLIC";
+        psql -d "iam" -c "REVOKE CREATE ON SCHEMA public FROM \"iam\"";
+        psql -d "iam" -c "GRANT USAGE ON SCHEMA public TO \"iam\"";
         if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'tenancy_migrator'" | grep -q 1; then
         psql -c "CREATE ROLE \"tenancy_migrator\" LOGIN"; fi;
         printf '%s\n' '\getenv pass TENANCY_PG_MIGRATOR_PASSWORD' 'SET log_min_error_statement = panic;' 'SET log_statement = none;'
@@ -56,6 +77,7 @@ services:
       RPK_USER: console
       RPK_PASS: ${KAFKA_CONSOLE_PASSWORD:-console-local}
       RPK_SASL_MECHANISM: SCRAM-SHA-256
+      KAFKA_IAM_PASSWORD: ${KAFKA_IAM_PASSWORD:-iam-local}
       KAFKA_TENANCY_PASSWORD: ${KAFKA_TENANCY_PASSWORD:-tenancy-local}
       KAFKA_CONSOLE_PASSWORD: ${KAFKA_CONSOLE_PASSWORD:-console-local}
     entrypoint: ['/bin/sh', '-c']
@@ -89,16 +111,19 @@ services:
             *) echo "redpanda-init: a Admin API recusou o usuário $$1 com status $$status" >&2; exit 1 ;;
           esac
         }
+        create_user iam "$$KAFKA_IAM_PASSWORD"
         create_user tenancy "$$KAFKA_TENANCY_PASSWORD"
         create_user console "$$KAFKA_CONSOLE_PASSWORD"
-        for user in tenancy console; do
+        for user in iam tenancy console; do
           rpk security user list $$admin | grep -qw "$$user"
         done
         rpk cluster config set superusers '["console",""]' $$admin
-        rpk topic create ${KAFKA_TENANCY_TOPIC:-tenancy.events} ${KAFKA_TENANCY_DLQ:-tenancy.events.dlq} $$broker -p 1 -r 1 || true
-        for topic in ${KAFKA_TENANCY_TOPIC:-tenancy.events} ${KAFKA_TENANCY_DLQ:-tenancy.events.dlq}; do
+        rpk topic create ${KAFKA_IAM_TOPIC:-iam.events} ${KAFKA_IAM_DLQ:-iam.events.dlq} ${KAFKA_TENANCY_TOPIC:-tenancy.events} ${KAFKA_TENANCY_DLQ:-tenancy.events.dlq} $$broker -p 1 -r 1 || true
+        for topic in ${KAFKA_IAM_TOPIC:-iam.events} ${KAFKA_IAM_DLQ:-iam.events.dlq} ${KAFKA_TENANCY_TOPIC:-tenancy.events} ${KAFKA_TENANCY_DLQ:-tenancy.events.dlq}; do
           rpk topic describe "$$topic" $$broker >/dev/null
         done
+        rpk security acl create --allow-principal User:iam --operation write,describe --topic ${KAFKA_IAM_TOPIC:-iam.events} --topic ${KAFKA_IAM_DLQ:-iam.events.dlq} $$broker
+        rpk security acl create --allow-principal User:iam --operation read,describe --topic ${KAFKA_IAM_TOPIC:-iam.events} --group ${KAFKA_IAM_GROUP:-iam-membership} $$broker
         rpk security acl create --allow-principal User:tenancy --operation write,describe --topic ${KAFKA_TENANCY_TOPIC:-tenancy.events} --topic ${KAFKA_TENANCY_DLQ:-tenancy.events.dlq} $$broker
         rpk cluster config set kafka_enable_authorization true $$admin
     deploy:

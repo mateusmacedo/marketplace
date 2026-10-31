@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Keycloak finally refused to provision an invited e-mail, in the iam bounded
+// context. Envelope type: com.company.iam.invitation-failed.v1 (PTB-03).
+message InvitationFailed {
+  string email = 1;
+  string reason = 2;
+  google.protobuf.Timestamp failed_at = 3;
+}

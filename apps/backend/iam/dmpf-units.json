@@ -1,0 +1,73 @@
+{
+  "schema": "dmpf/units@1",
+  "units": [
+    {
+      "id": "iam/domain",
+      "block": "domain",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/iam/domain"]
+    },
+    {
+      "id": "iam/ports",
+      "block": "port",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/iam/ports"]
+    },
+    {
+      "id": "iam/application",
+      "block": "application",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/iam/application"]
+    },
+    {
+      "id": "iam/provider-postgres",
+      "block": "provider",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/iam/provider"]
+    },
+    {
+      "id": "iam/app",
+      "block": "app",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": [
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/app",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/app/rpc",
+        "github.com/mateusmacedo/marketplace/apps/backend/iam/cmd"
+      ]
+    },
+    {
+      "id": "iam/appkit",
+      "block": "app",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/iam/appkit"]
+    },
+    {
+      "id": "iam/distkit",
+      "block": "app",
+      "bounded_context": "iam",
+      "public_integration_surface": false,
+      "include": ["github.com/mateusmacedo/marketplace/apps/backend/iam/distkit"]
+    }
+  ],
+  "external": [
+    {
+      "package": "github.com/jackc/pgx/v5",
+      "versions": ">=5.10 <6",
+      "entrypoints": [".", "github.com/jackc/pgx/v5/pgxpool", "github.com/jackc/pgx/v5/pgconn"],
+      "capability": "io.storage"
+    },
+    {
+      "package": "google.golang.org/protobuf",
+      "versions": ">=1.36.12 <2",
+      "entrypoints": ["google.golang.org/protobuf/proto"],
+      "capability": "wire.codec"
+    }
+  ],
+  "exceptions": []
+}

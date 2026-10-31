@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// An active role of a store was retired, in the iam bounded context; it no
+// longer grants permissions. Envelope type: com.company.iam.role-retired.v1 (PTB-03).
+message RoleRetired {
+  string ref = 1;
+  int64 access_version = 2;
+  google.protobuf.Timestamp retired_at = 3;
+}

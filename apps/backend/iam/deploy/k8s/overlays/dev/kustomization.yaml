@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/mateusmacedo/iam
+    newTag: dev
+
+secretGenerator:
+  - name: iam
+    literals:
+      - PG_DSN=postgres://iam:iam-dev@postgres-0.postgres:5432/iam?sslmode=disable
+      - KAFKA_BROKERS=redpanda-0.redpanda:9092
+    options:
+      disableNameSuffixHash: true
+  - name: iam-migrator
+    literals:
+      - PG_MIGRATE_DSN=postgres://iam_migrator:iam-migrator-dev@postgres-0.postgres:5432/iam?sslmode=disable
+    options:
+      disableNameSuffixHash: true
+
+patches:
+  - path: configmap-iam-patch.yaml
+  - path: deployment-iam-api-patch.yaml

@@ -1,0 +1,22 @@
+# Valores não sensíveis dos três papéis; cada papel só lê o que lhe cabe.
+# Os opt-outs de TLS nascem desligados e o transporte gRPC não tem default:
+# o overlay declara o opt-out de desenvolvimento ou os arquivos do certificado.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iam
+data:
+  GRPC_ADDR: ':9090'
+  KAFKA_IAM_TOPIC: iam.events
+  KAFKA_IAM_DLQ: iam.events.dlq
+  KAFKA_GROUP: iam-membership
+  KAFKA_INSECURE: 'false'
+  OTEL_SERVICE_NAME: iam
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  OTEL_TRACES_SAMPLER_ARG: '1.0'
+  OTEL_LOGS_EXPORTER: otlp
+  OTEL_PROPAGATORS: tracecontext
+  OTEL_GO_X_OBSERVABILITY: 'true'
+  OTEL_BSP_EXPORT_TIMEOUT: '3000'
+  OTEL_BLRP_EXPORT_TIMEOUT: '3000'

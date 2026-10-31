@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// An e-mail was invited to a store, or its invitation was reopened, in the iam
+// bounded context. Envelope type: com.company.iam.member-invited.v1 (PTB-03).
+message MemberInvited {
+  // The normalized address: trimmed and in lower case.
+  string email = 1;
+  // Refs of roles, sorted and without repetition.
+  repeated string roles = 2;
+  // Starts at 1 and grows with each reopening of the invitation.
+  int64 round = 3;
+  google.protobuf.Timestamp invited_at = 4;
+}

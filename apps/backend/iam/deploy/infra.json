@@ -1,0 +1,50 @@
+{
+  "schema": "dmpf/infra@1",
+  "app": "iam",
+  "image": {
+    "env": "IAM_IMAGE",
+    "local": "iam:local"
+  },
+  "database": {
+    "passwordEnv": "IAM_PG_PASSWORD",
+    "local": "iam-local",
+    "dev": "iam-dev",
+    "migrator": {
+      "passwordEnv": "IAM_PG_MIGRATOR_PASSWORD",
+      "local": "iam-migrator-local",
+      "dev": "iam-migrator-dev"
+    }
+  },
+  "kafka": {
+    "passwordEnv": "KAFKA_IAM_PASSWORD",
+    "local": "iam-local",
+    "topics": [
+      {
+        "name": "iam.events",
+        "env": "KAFKA_IAM_TOPIC"
+      },
+      {
+        "name": "iam.events.dlq",
+        "env": "KAFKA_IAM_DLQ"
+      }
+    ],
+    "acls": [
+      {
+        "operations": ["write", "describe"],
+        "topics": ["iam.events", "iam.events.dlq"]
+      },
+      {
+        "operations": ["read", "describe"],
+        "topics": ["iam.events"],
+        "group": {
+          "name": "iam-membership",
+          "env": "KAFKA_IAM_GROUP"
+        }
+      }
+    ]
+  },
+  "grpc": {
+    "server": "dmpf-iam-api"
+  },
+  "openapi": false
+}

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A role was defined in a store, in the iam bounded context; the tenant of the
+// envelope is the store. Envelope type: com.company.iam.role-defined.v1 (PTB-03).
+message RoleDefined {
+  string ref = 1;
+  string name = 2;
+  // Sorted and without repetition.
+  repeated string permissions = 3;
+  int64 access_version = 4;
+  google.protobuf.Timestamp defined_at = 5;
+}

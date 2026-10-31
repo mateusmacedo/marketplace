@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A blocked buyer got the permission to buy back, in the iam bounded context.
+// Envelope type: com.company.iam.buyer-unblocked.v1 (PTB-03).
+message BuyerUnblocked {
+  string subject = 1;
+  int64 access_version = 2;
+  google.protobuf.Timestamp unblocked_at = 3;
+}

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A subject became, or became again, an active member of a store, in the iam
+// bounded context. Envelope type: com.company.iam.membership-established.v1 (PTB-03).
+message MembershipEstablished {
+  string subject = 1;
+  // Empty when the membership was established by claiming the ownership.
+  string email = 2;
+  // Refs of roles, sorted and without repetition; may hold owner.
+  repeated string roles = 3;
+  int64 access_version = 4;
+  google.protobuf.Timestamp established_at = 5;
+}

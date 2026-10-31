@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package company.iam.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A buyer was registered in the tenant of the operator, in the iam bounded
+// context. Envelope type: com.company.iam.buyer-registered.v1 (PTB-03).
+message BuyerRegistered {
+  string subject = 1;
+  string name = 2;
+  int64 access_version = 3;
+  google.protobuf.Timestamp registered_at = 4;
+}
