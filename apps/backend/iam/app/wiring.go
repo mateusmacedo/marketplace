@@ -97,6 +97,30 @@ func NewService(pool *pgxpool.Pool, clock ports.Clock, ids ports.IDGenerator, wa
 	}
 }
 
+// NewKeycloak is the partner of the external commands, for the role that runs
+// them (the consumer). The caller consults cfg.Keycloak.Enabled() first: an
+// environment that leaves the adapter off is refused, as is a profile no
+// command could run with.
+func NewKeycloak(cfg Config, deps provider.KeycloakDeps) (*provider.Keycloak, error) {
+	if !cfg.Keycloak.Enabled() {
+		return nil, fmt.Errorf("%w: the KEYCLOAK_IAM_* variables leave the adapter off", ErrMissingVariable)
+	}
+	keycloak, err := provider.NewKeycloak(provider.KeycloakConfig{
+		BaseURL:        cfg.Keycloak.URL,
+		Realm:          cfg.Keycloak.Realm,
+		ClientID:       cfg.Keycloak.ClientID,
+		Secret:         cfg.Keycloak.Secret,
+		OperatorTenant: cfg.OperatorTenant,
+	}, deps)
+	if err != nil {
+		return nil, err
+	}
+	if err := usecase.ValidateExternalProfile(keycloak.Profile()); err != nil {
+		return nil, err
+	}
+	return keycloak, nil
+}
+
 // NewIamService assembles the use cases over Postgres, with the
 // instrumentation of FND-08 and the audit trail emitted through rt.
 func NewIamService(pool *pgxpool.Pool, rt *otelboot.Runtime, cfg Config) (application.Service, error) {

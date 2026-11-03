@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/envconfig"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/transport/admission"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+
+	"github.com/mateusmacedo/marketplace/apps/backend/iam/provider"
 )
 
 // Role selects which process the binary becomes (BLK-02: the relay never
@@ -53,7 +56,62 @@ const (
 	envOperatorTenant = "IAM_OPERATOR_TENANT"
 
 	envMetricTenants = "METRIC_TENANTS"
+
+	envKeycloakURL      = "KEYCLOAK_IAM_URL"
+	envKeycloakRealm    = "KEYCLOAK_IAM_REALM"
+	envKeycloakClientID = "KEYCLOAK_IAM_CLIENT_ID"
+	envKeycloakSecret   = "KEYCLOAK_IAM_ADMIN_SECRET"
 )
+
+// KeycloakEnv is the service account of the iam in Keycloak: the four
+// variables together turn the adapter on, none of them leaves it off.
+type KeycloakEnv struct {
+	URL      string
+	Realm    string
+	ClientID string
+	Secret   provider.KeycloakSecret
+}
+
+// Enabled reports whether the environment names the service account at all;
+// Validate refuses one named in part.
+func (e KeycloakEnv) Enabled() bool {
+	return e.URL != "" || e.Realm != "" || e.ClientID != "" || !e.Secret.IsZero()
+}
+
+func readKeycloakEnv(lookup func(string) string) KeycloakEnv {
+	env := KeycloakEnv{URL: lookup(envKeycloakURL), Realm: lookup(envKeycloakRealm), ClientID: lookup(envKeycloakClientID)}
+	if secret := lookup(envKeycloakSecret); secret != "" {
+		env.Secret = provider.NewKeycloakSecret(secret)
+	}
+	return env
+}
+
+// validate never puts the URL in the error: a URL with credentials in it is
+// one of the values it refuses.
+func (e KeycloakEnv) validate() error {
+	if !e.Enabled() {
+		return nil
+	}
+	for _, variable := range []struct {
+		name   string
+		absent bool
+	}{
+		{envKeycloakURL, e.URL == ""},
+		{envKeycloakRealm, e.Realm == ""},
+		{envKeycloakClientID, e.ClientID == ""},
+		{envKeycloakSecret, e.Secret.IsZero()},
+	} {
+		if variable.absent {
+			return fmt.Errorf("%w: %s", ErrMissingVariable, variable.name)
+		}
+	}
+	parsed, err := url.Parse(e.URL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("%w: %s must be an http or https origin without credentials, query or fragment", ErrInvalidVariable, envKeycloakURL)
+	}
+	return nil
+}
 
 // Config is every operational value the two roles need, resolved once at
 // startup from the environment.
@@ -82,6 +140,10 @@ type Config struct {
 	// OperatorTenant is the reserved tenant of the marketplace: buyers live in
 	// it, and roles, invitations and memberships live in any other.
 	OperatorTenant string
+
+	// Keycloak is read for every role and required by none: the role that runs
+	// the external commands is the one that demands it.
+	Keycloak KeycloakEnv
 
 	// Wait is the INB-17 ceiling of a delivered message; ConsumerTimeout is the
 	// consumer's own time policy, which CTX-28 makes mandatory per attempt.
@@ -148,6 +210,7 @@ func FromEnv(role Role, lookup func(string) string) (Config, error) {
 	if role == RoleAPI || role == RoleConsumer {
 		cfg.OperatorTenant = lookup(envOperatorTenant)
 	}
+	cfg.Keycloak = readKeycloakEnv(lookup)
 
 	flags := []struct {
 		variable string
@@ -184,6 +247,9 @@ func (c Config) Validate() error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: %s", ErrMissingVariable, missing[0])
+	}
+	if err := c.Keycloak.validate(); err != nil {
+		return err
 	}
 	if err := c.Policies.Validate(true, ErrInvalidPolicy); err != nil {
 		return err

@@ -15,7 +15,7 @@ o primeiro em que toda dependência do módulo está de pé. Import path do mód
 | `domain` | `domain` | `iam/domain` | Agregados síncronos e determinísticos, com o desfecho da UPR — sem porta, relógio, contexto nem tipo de wire. |
 | `ports` | `port` | `iam/ports` | Fronteira declarada — repositórios, outbox e inbox em tipos do domínio, sem nenhuma realização. |
 | `application` | `application` | `iam/application` | Lado do chamador da UPR: casos de uso de escrita na sequência canônica e a disposição do consumo. |
-| `provider` | `provider` | `iam/provider-postgres` | Realização em PostgreSQL das portas transacionais do contexto, com esquema e mapeadores próprios. |
+| `provider` | `provider` | `iam/provider-postgres` | Realização em PostgreSQL das portas transacionais do contexto, com esquema e mapeadores próprios, e o adaptador Keycloak dos comandos externos de saída. |
 | `app` | `app` | `iam/app` | Composição entre a entrega do transporte e o serviço de aplicação, com a borda gRPC do contexto. |
 
 `block` e `bounded_context` vêm das opções do generator e vão literalmente ao
@@ -153,3 +153,63 @@ O generator não gera o papel consumer. Por isso os alvos `serve-consumer` e
 alvos do relay com o papel trocado, iguais aos do contexto de referência
 `reservations` do DMPF. É a única exceção à regra de não escrever o
 `project.json` à mão, e vale até o generator ganhar suporte a consumer.
+
+## Keycloak como parceiro dos comandos externos
+
+O `iam` projeta papéis, vínculos e compradores no Keycloak por comandos externos
+de saída (ADR-070 do platform). Os arquivos `provider/keycloak*.go` realizam
+`ports.ExternalCommand` para os cinco comandos da SPEC-2FJ0KYKV ("Integração"):
+`SyncRole()`, `ProvisionMember()`, `MemberAccess()` (que serve ao SyncMemberAccess
+e ao RevokeMemberAccess, porque os dois convergem pelo `status` do vínculo) e
+`BuyerAccess()`. Cada comando lê o Keycloak e converge ao estado desejado que
+recebe, então a reentrega e a ordem trocada não duplicam efeito. O adaptador
+nunca altera Organization.
+
+- **Payload**: o estado desejado é declarado em `ports` (`RoleAccess`,
+  `MemberProvision`, `MemberAccess`, `BuyerAccess`), e quem o serializa é a
+  porta `ports.ExternalPayloads`, realizada por `provider.KeycloakPayloads`.
+  `ports` e `application` não importam `encoding/json` (depguard), e o JSON grava
+  o status como texto (`active`, `retired`, `removed`, `blocked`).
+- **Tenant**: vem do contexto de execução. Os comandos de loja recusam o tenant
+  do operador, e o `BuyerAccess` só o aceita.
+- **Transporte**: usa o cliente `kernelhttp` do kernel, com rotas declaradas, o
+  prazo derivado do `ctx` e uma ficha de resiliência própria (`keycloak`). O token
+  client credentials fica em cache e, diante de um 401, é renovado uma vez antes
+  de a resposta valer como recusa.
+- **Desfechos**: `provider.KeycloakOutcomes()` (versão `keycloak-admin-26.8/1`)
+  mapeia cada status em `ports.ExternalClass`. Os 404 e 409 esperados por um passo
+  (grupo que já existe, membro que já saiu) são tratados no próprio passo.
+  Organization ausente, grupo `owner` ausente e o 403 do FGAP são recusa final.
+- **Perfil**: `Profile()` declara `KeyNone` (a Admin API não deduplica),
+  `EfficacyOnSubmit` e nenhuma consulta de estado.
+
+A configuração vem do ambiente:
+
+| Variável | Uso |
+| --- | --- |
+| `KEYCLOAK_IAM_URL` | base do Keycloak |
+| `KEYCLOAK_IAM_REALM` | realm (`dmpf` em desenvolvimento) |
+| `KEYCLOAK_IAM_CLIENT_ID` | client da service account (`iam-admin`) |
+| `KEYCLOAK_IAM_ADMIN_SECRET` | segredo da service account |
+
+As quatro variáveis vazias desligam o adaptador. Se só parte delas vier preenchida,
+ou se a URL for inválida, a partida é recusada. Os nomes levam `IAM` para que o
+`KEYCLOAK_URL` do workspace, que o `.env.example` da raiz entrega a todo teste,
+não ligue o adaptador por acaso. O segredo é redigido em `%v`, `%#v`,
+JSON e texto, e nunca vai a erro nem a log. `app.NewKeycloak` monta o adaptador e
+valida o perfil por `application.ValidateExternalProfile`. Com o adaptador
+desligado ele recusa, então quem o chama consulta `cfg.Keycloak.Enabled()` antes. Nenhuma role exige as
+variáveis enquanto o ciclo do comando externo não estiver ligado ao consumer. A
+service account só tem papéis de leitura de `realm-management`; o que ela altera
+vem do FGAP v2 do realm (SPEC-2FJ0KYKV, "Resultado dos spikes").
+
+Os testes unitários usam um dublê `httptest` da Admin API e rodam no
+`test-race`. Os de integração têm as tags `integration` e `keycloak` e rodam
+contra o Keycloak de testes com o seed do marketplace, pelo script do `bff`. Rode
+um de cada vez com os do `bff`, porque o script derruba o Keycloak ao sair:
+
+```bash
+cd apps/backend/iam
+bash ../../../node_modules/@mateusmacedo/dmpf-plugin/scripts/test-env.sh \
+  bash ../bff/scripts/test-keycloak.sh ./provider/...
+```

@@ -25,4 +25,4 @@ trap teardown EXIT
 "${compose[@]}" run --rm -e KEYCLOAK_SEED_PASSWORD -e KEYCLOAK_IAM_ADMIN_SECRET \
   -v "$marketplace_seed:/seed/marketplace.sh:ro" --entrypoint bash keycloak-init /seed/marketplace.sh
 
-go test -race -count=1 -p 1 -tags=integration,keycloak -run 'Keycloak' ./...
+go test -race -count=1 -p 1 -tags=integration,keycloak -run 'Keycloak' "${@:-./...}"

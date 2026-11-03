@@ -9,7 +9,7 @@ remover arquivos, atualize a tabela correspondente.
 
 | Diretório | Itens | Conteúdo |
 | --- | --- | --- |
-| `rules/` | 13 | Regras de conduta e de qualidade |
+| `rules/` | 14 | Regras de conduta e de qualidade |
 | `skills/` | 26 | Skills de domínio (mais 11 arquivos em `references/`) |
 | `agents/` | 50 | Agentes especializados |
 | `commands/` | 9 | Comandos de workspace (Nx, DMPF e utilitários) |
@@ -33,6 +33,7 @@ Carregadas como contexto de conduta. Descrevem o que é esperado em cada área.
 | Padrões de código | `rules/code-patterns.md` | Sintaxe, naming, imports e convenções recomendadas. |
 | Disciplina de comentários | `rules/comment-discipline.md` | Comente o porquê e não o quê; evita comentários redundantes, narração e código comentado. |
 | Referências efêmeras | `rules/ephemeral-refs.md` | Cite apenas artefatos duráveis; evita apontar para planos e estados de pipeline não versionados. |
+| Revisores externos | `rules/external-reviewers.md` | Qual CLI de outro modelo revisa planos e código (Codex, depois Copilot no modo automático `intelligence`) e como mantê-lo só de leitura. |
 | Tratamento de erros | `rules/error-handling.md` | Hierarquia de erros, tratamento centralizado, logging e mensagens. |
 | Organização de arquivos | `rules/file-organization.md` | Colocalização e separação em camadas. |
 | Limites de tamanho | `rules/file-size-limits.md` | Heurísticas de tamanho para arquivos e funções. |
