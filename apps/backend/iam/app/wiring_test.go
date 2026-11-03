@@ -2,9 +2,13 @@ package app_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	usecase "github.com/mateusmacedo/dmpf/libs/backend/go/application"
+	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/clock"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/observability/otelboot"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/ports"
 	"github.com/mateusmacedo/dmpf/libs/backend/go/testkit/obstest"
@@ -12,6 +16,7 @@ import (
 
 	"github.com/mateusmacedo/marketplace/apps/backend/iam/app"
 	"github.com/mateusmacedo/marketplace/apps/backend/iam/application"
+	"github.com/mateusmacedo/marketplace/apps/backend/iam/provider"
 )
 
 func TestTheAuditTrailOfTheServiceReachesTheLoggerProviderOfTheRuntime(t *testing.T) {
@@ -44,5 +49,39 @@ func TestTheRelayAddressesTheChannelByItsPhysicalTopic(t *testing.T) {
 	}
 	if topic := catalog.AddressOf("uncatalogued.events"); topic != "" {
 		t.Fatalf("AddressOf(uncatalogued.events) = %q, want empty: the send never names a logical channel", topic)
+	}
+}
+
+func keycloakConfig(operator string) app.Config {
+	cfg := app.Defaults(app.RoleConsumer)
+	cfg.OperatorTenant = operator
+	cfg.Keycloak = app.KeycloakEnv{URL: "http://keycloak:8080", Realm: "dmpf", ClientID: "iam-admin", Secret: provider.NewKeycloakSecret("s3cr3t")}
+	return cfg
+}
+
+func TestNewKeycloakRefusesAnEnvironmentThatLeavesTheAdapterOff(t *testing.T) {
+	k, err := app.NewKeycloak(app.Defaults(app.RoleConsumer), provider.KeycloakDeps{Clock: clock.System()})
+
+	if !errors.Is(err, app.ErrMissingVariable) || !strings.Contains(err.Error(), "KEYCLOAK_IAM_") || k != nil {
+		t.Fatalf("NewKeycloak() = %v, %v; want no partner and ErrMissingVariable naming KEYCLOAK_IAM_*", k, err)
+	}
+}
+
+func TestNewKeycloakAssemblesAPartnerUnderAValidProfile(t *testing.T) {
+	k, err := app.NewKeycloak(keycloakConfig("marketplace"), provider.KeycloakDeps{Clock: clock.System()})
+
+	if err != nil || k == nil {
+		t.Fatalf("NewKeycloak() = %v, %v; want the partner", k, err)
+	}
+	if err := usecase.ValidateExternalProfile(k.Profile()); err != nil {
+		t.Fatalf("ValidateExternalProfile() = %v, want nil", err)
+	}
+}
+
+func TestNewKeycloakRefusesAPartnerWithoutTheOperatorTenant(t *testing.T) {
+	k, err := app.NewKeycloak(keycloakConfig(""), provider.KeycloakDeps{Clock: clock.System()})
+
+	if !errors.Is(err, provider.ErrKeycloakConfig) || k != nil {
+		t.Fatalf("NewKeycloak() = %v, %v; want ErrKeycloakConfig: the operator tenant fences the commands", k, err)
 	}
 }

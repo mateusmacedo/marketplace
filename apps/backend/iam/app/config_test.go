@@ -1,7 +1,10 @@
 package app_test
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -223,5 +226,129 @@ func TestTheRelayNeitherRequiresNorReadsTheOperatorTenant(t *testing.T) {
 
 	if err != nil || cfg.OperatorTenant != "" {
 		t.Fatalf("FromEnv(relay) = %q, %v; want it never read by a role that serves no command", cfg.OperatorTenant, err)
+	}
+}
+
+const keycloakSecret = "s3cr3t-of-the-iam-admin"
+
+var keycloakEnv = []string{
+	"KEYCLOAK_IAM_URL", "http://keycloak:8080", "KEYCLOAK_IAM_REALM", "dmpf",
+	"KEYCLOAK_IAM_CLIENT_ID", "iam-admin", "KEYCLOAK_IAM_ADMIN_SECRET", keycloakSecret,
+}
+
+func envOfRole(role app.Role) []string {
+	switch role {
+	case app.RoleAPI:
+		return []string{"PG_DSN", "postgres://x", "GRPC_INSECURE", "true", "IAM_OPERATOR_TENANT", "marketplace"}
+	case app.RoleRelay:
+		return []string{"PG_DSN", "postgres://x", "KAFKA_BROKERS", "b:9092", "KAFKA_INSECURE", "true", "KAFKA_IAM_TOPIC", "t", "KAFKA_IAM_DLQ", "d", "KAFKA_GROUP", "g"}
+	default:
+		return consumerEnv
+	}
+}
+
+func withKeycloak(role app.Role, pairs ...string) func(string) string {
+	return lookup(append(append(append([]string{}, envOfRole(role)...), keycloakEnv...), pairs...)...)
+}
+
+func TestKeycloakIsOffWhenTheEnvironmentNamesNoneOfItsVariables(t *testing.T) {
+	for _, role := range app.Roles {
+		t.Run(string(role), func(t *testing.T) {
+			cfg, err := app.FromEnv(role, lookup(envOfRole(role)...))
+
+			if err != nil || cfg.Keycloak.Enabled() {
+				t.Fatalf("FromEnv() = %+v, %v; want the adapter off and none of its variables required", cfg.Keycloak, err)
+			}
+		})
+	}
+}
+
+func TestKeycloakIsOffWhenOnlyTheWorkspaceKeycloakURLIsSet(t *testing.T) {
+	for _, role := range app.Roles {
+		t.Run(string(role), func(t *testing.T) {
+			env := append(append([]string{}, envOfRole(role)...), "KEYCLOAK_URL", "http://127.0.0.1:18180")
+			cfg, err := app.FromEnv(role, lookup(env...))
+
+			if err != nil || cfg.Keycloak.Enabled() {
+				t.Fatalf("FromEnv() = %+v, %v; want the adapter off: KEYCLOAK_URL belongs to the workspace, not to the iam", cfg.Keycloak, err)
+			}
+		})
+	}
+}
+
+func TestKeycloakConfigReadsItsFourVariablesForEveryRole(t *testing.T) {
+	for _, role := range app.Roles {
+		t.Run(string(role), func(t *testing.T) {
+			cfg, err := app.FromEnv(role, withKeycloak(role))
+
+			if err != nil {
+				t.Fatalf("FromEnv() = %v, want nil", err)
+			}
+			got := cfg.Keycloak
+			if !got.Enabled() || got.URL != "http://keycloak:8080" || got.Realm != "dmpf" || got.ClientID != "iam-admin" || got.Secret.IsZero() {
+				t.Fatalf("Keycloak = %+v, want the four variables read", got)
+			}
+		})
+	}
+}
+
+func TestKeycloakConfigRefusesAPartialEnvironment(t *testing.T) {
+	for _, role := range app.Roles {
+		for i := 0; i < len(keycloakEnv); i += 2 {
+			variable := keycloakEnv[i]
+			t.Run(string(role)+" without "+variable, func(t *testing.T) {
+				_, err := app.FromEnv(role, withKeycloak(role, variable, ""))
+
+				if !errors.Is(err, app.ErrMissingVariable) || !strings.Contains(err.Error(), variable) {
+					t.Fatalf("FromEnv() = %v, want %s named: a partial service account refuses the start", err, variable)
+				}
+			})
+		}
+	}
+}
+
+func TestKeycloakConfigRefusesAURLThatIsNoHTTPOrigin(t *testing.T) {
+	invalid := []string{
+		"keycloak:8080", "ftp://keycloak", "http://admin:" + keycloakSecret + "@keycloak",
+		"http://keycloak?realm=dmpf", "http://keycloak#x", "http:///realms",
+	}
+	for _, raw := range invalid {
+		t.Run(raw, func(t *testing.T) {
+			_, err := app.FromEnv(app.RoleConsumer, withKeycloak(app.RoleConsumer, "KEYCLOAK_IAM_URL", raw))
+
+			if !errors.Is(err, app.ErrInvalidVariable) || !strings.Contains(err.Error(), "KEYCLOAK_IAM_URL") {
+				t.Fatalf("FromEnv(KEYCLOAK_IAM_URL=%s) = %v, want ErrInvalidVariable naming KEYCLOAK_IAM_URL", raw, err)
+			}
+			if strings.Contains(err.Error(), keycloakSecret) {
+				t.Fatalf("FromEnv() error %q carries the secret", err)
+			}
+		})
+	}
+}
+
+func TestKeycloakConfigNeverRendersTheSecret(t *testing.T) {
+	cfg, err := app.FromEnv(app.RoleConsumer, withKeycloak(app.RoleConsumer))
+	if err != nil {
+		t.Fatalf("FromEnv() = %v", err)
+	}
+	marshalled, err := json.Marshal(cfg.Keycloak)
+	if err != nil {
+		t.Fatalf("json.Marshal(Keycloak) = %v", err)
+	}
+	var text, structured strings.Builder
+	slog.New(slog.NewTextHandler(&text, nil)).Info("config", "keycloak", cfg.Keycloak)
+	slog.New(slog.NewJSONHandler(&structured, nil)).Info("config", "keycloak", cfg.Keycloak)
+
+	for name, rendered := range map[string]string{
+		"%v":       fmt.Sprintf("%v", cfg),
+		"%+v":      fmt.Sprintf("%+v", cfg),
+		"%#v":      fmt.Sprintf("%#v", cfg),
+		"JSON":     string(marshalled),
+		"text log": text.String(),
+		"json log": structured.String(),
+	} {
+		if strings.Contains(rendered, keycloakSecret) {
+			t.Errorf("%s of the config carries the secret: %s", name, rendered)
+		}
 	}
 }
