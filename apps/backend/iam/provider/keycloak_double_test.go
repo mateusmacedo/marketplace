@@ -1,6 +1,7 @@
 package provider_test
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -256,6 +257,14 @@ func (d *keycloakDouble) breakConnection(route string, broken connectionFault, t
 	d.faults = append(d.faults, &doubleFault{route: route, times: times, broken: broken})
 }
 
+// truncate answers the route with status the next times calls and cuts the
+// body midway; after applies the effect first.
+func (d *keycloakDouble) truncate(route string, status, times int, after bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.faults = append(d.faults, &doubleFault{route: route, status: status, times: times, after: after, broken: connectionTruncated})
+}
+
 // holdGrants keeps every grant of the token waiting until release; entered
 // receives once per grant that reached the double.
 func (d *keycloakDouble) holdGrants(t *testing.T) (entered <-chan struct{}, release func()) {
@@ -447,7 +456,7 @@ func (d *keycloakDouble) takeFault(route string, after bool) *doubleFault {
 
 func writeFault(w http.ResponseWriter, fault *doubleFault) {
 	if fault.broken != connectionKept {
-		breakOff(w, fault.broken)
+		breakOff(w, fault)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -456,15 +465,17 @@ func writeFault(w http.ResponseWriter, fault *doubleFault) {
 }
 
 // breakOff takes the connection from the server and closes it, after the
-// head and part of the body when truncated: what the client reads is cut.
-func breakOff(w http.ResponseWriter, broken connectionFault) {
+// head and part of the body when truncated: what the client reads is cut. The
+// head carries the status of the fault, 200 when it names none.
+func breakOff(w http.ResponseWriter, fault *doubleFault) {
 	conn, buf, err := w.(http.Hijacker).Hijack()
 	if err != nil {
 		return
 	}
 	defer func() { _ = conn.Close() }()
-	if broken == connectionTruncated {
-		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n[{\"id\":")
+	if fault.broken == connectionTruncated {
+		status := cmp.Or(fault.status, http.StatusOK)
+		_, _ = fmt.Fprintf(buf, "HTTP/1.1 %d %s\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n[{\"id\":", status, http.StatusText(status))
 		_ = buf.Flush()
 	}
 }

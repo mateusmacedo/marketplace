@@ -100,11 +100,15 @@ type keycloakReply struct {
 	location string
 }
 
+// readReply keeps what was read of a refusal whose body broke off: the status
+// alone classifies it, and the OAuth code of the token, its one reader, falls
+// back to unknown_ambiguous when the part read does not decode. An accepted
+// answer cut short already had its effect and lacks what the step reads.
 func readReply(step string, repeatable bool, resp *http.Response) (keycloakReply, error) {
 	defer func() { _ = resp.Body.Close() }()
 	reply := keycloakReply{status: resp.StatusCode, location: resp.Header.Get("Location")}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, keycloakMaxBody+1))
-	if err != nil {
+	if err != nil && accepted(resp.StatusCode) {
 		class := ports.ClassUnknownAmbiguous
 		if repeatable {
 			class = ports.ClassRetryableTransport

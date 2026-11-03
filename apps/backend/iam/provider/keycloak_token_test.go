@@ -538,6 +538,39 @@ func TestKeycloakConnectionLostAfterTheSendIsRetryableOnlyWhereARepeatChangesNot
 	}
 }
 
+// A refusal is classified by its status even when its body was cut: only an
+// accepted answer carries the body a step reads.
+func TestKeycloakRefusalWhoseBodyWasCutIsClassifiedByItsStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		route  string
+		status int
+		want   ports.ExternalClass
+	}{
+		{"read forbidden", "read_realm_role", http.StatusForbidden, ports.ClassFinalAuthorization},
+		{"grant unavailable", "token", http.StatusServiceUnavailable, ports.ClassRetryableUpstream},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := newKeycloakDouble(t)
+			buyer := d.addUser("comprador@example.com")
+			d.truncate(tt.route, tt.status, 10, false)
+
+			class, _, err := submit(t, inTenant(t, testOperator), d.keycloak(t).BuyerAccess(), buyerPayload(t, buyer, domain.BuyerStatusActive))
+
+			if class != tt.want {
+				t.Fatalf("Submit() = %v, %v; want %v", class, err, tt.want)
+			}
+			if !strings.Contains(err.Error(), fmt.Sprintf("HTTP %d", tt.status)) {
+				t.Fatalf("err = %v, want the status named for diagnosis", err)
+			}
+			if d.hasBuyerRole(buyer) {
+				t.Fatal("the buyer holds iam:buyer, want the refused call to have changed nothing")
+			}
+		})
+	}
+}
+
 func TestKeycloakAdminRetriesATransientReadWithinTheCall(t *testing.T) {
 	d := newKeycloakDouble(t)
 	buyer := d.addUser("comprador@example.com")

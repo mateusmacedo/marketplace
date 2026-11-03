@@ -148,6 +148,36 @@ func TestNewKeycloakRefusesAnIncompleteConfig(t *testing.T) {
 	}
 }
 
+// A dot segment would lift the token and the Admin API URLs out of the realm,
+// so it is refused before the client exists, under a message without the value.
+func TestNewKeycloakRefusesARealmThatIsADotSegment(t *testing.T) {
+	refusals := map[string]string{}
+	for name, realm := range map[string]string{"current directory": ".", "parent directory": ".."} {
+		t.Run(name, func(t *testing.T) {
+			requests := 0
+			cfg := validKeycloakConfig("http://keycloak.test")
+			cfg.Realm = realm
+			deps := provider.KeycloakDeps{Clock: clock.System(), Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				return nil, errors.New("no request is expected")
+			})}
+
+			k, err := provider.NewKeycloak(cfg, deps)
+
+			if !errors.Is(err, provider.ErrKeycloakConfig) || !strings.Contains(err.Error(), "realm") || k != nil {
+				t.Fatalf("NewKeycloak(Realm=%q) built = %t, err = %v; want no client and ErrKeycloakConfig naming the realm", realm, k != nil, err)
+			}
+			if requests != 0 {
+				t.Fatalf("requests = %d, want none", requests)
+			}
+			refusals[realm] = err.Error()
+		})
+	}
+	if refusals["."] != refusals[".."] {
+		t.Fatalf("errors = %q and %q, want one fixed message that never carries the realm", refusals["."], refusals[".."])
+	}
+}
+
 func TestNewKeycloakAcceptsABaseURLWithAPathPrefix(t *testing.T) {
 	if _, err := provider.NewKeycloak(validKeycloakConfig("https://sso.example/auth/"), provider.KeycloakDeps{Clock: clock.System()}); err != nil {
 		t.Fatalf("NewKeycloak(https://sso.example/auth/) = %v, want nil", err)

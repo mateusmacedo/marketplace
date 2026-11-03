@@ -154,8 +154,10 @@ func NewKeycloak(cfg KeycloakConfig, deps KeycloakDeps) (*Keycloak, error) {
 		return nil, err
 	}
 	switch {
-	case cfg.Realm == "":
-		return nil, fmt.Errorf("%w: realm", ErrKeycloakConfig)
+	// WHY: url.PathEscape keeps a dot segment, which lifts the token and the
+	// Admin API URLs out of the realm.
+	case unsafeSegment(cfg.Realm):
+		return nil, fmt.Errorf("%w: realm is empty or a dot segment", ErrKeycloakConfig)
 	case cfg.ClientID == "":
 		return nil, fmt.Errorf("%w: client id", ErrKeycloakConfig)
 	case cfg.Secret.IsZero():

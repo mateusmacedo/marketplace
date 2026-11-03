@@ -243,6 +243,19 @@ func TestKeycloakSyncRoleRereadsTheGroupAnotherCommandCreated(t *testing.T) {
 	requireGroupRoles(t, d, d.organizationOf(storeTenant), "expedicao", "catalog:read")
 }
 
+func TestKeycloakSyncRoleRereadsTheGroupAfterAConflictWhoseBodyWasCut(t *testing.T) {
+	d := newKeycloakDouble(t)
+	d.truncate("create_group", http.StatusConflict, 1, true)
+
+	class, _, err := submit(t, inTenant(t, storeTenant), d.keycloak(t).SyncRole(), rolePayload(t, "expedicao", domain.RoleStatusActive, "catalog:read"))
+
+	requireClass(t, class, err, ports.ClassAccepted)
+	requireGroupRoles(t, d, d.organizationOf(storeTenant), "expedicao", "catalog:read")
+	if reads, creations := d.callsTo("find_groups"), d.callsTo("create_group"); reads != 2 || creations != 1 {
+		t.Fatalf("find_groups = %d, create_group = %d; want the 409 read back once and the creation sent once", reads, creations)
+	}
+}
+
 func TestKeycloakSyncRoleReadsEveryPageOfTheClientRoles(t *testing.T) {
 	d := newKeycloakDouble(t)
 	for i := range 150 {
